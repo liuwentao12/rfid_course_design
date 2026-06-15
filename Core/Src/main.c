@@ -25,6 +25,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "stm32f1xx_hal_uart.h"
+#include "access_config.h"
+#include "access_control.h"
 #include "pn532.h"
 /* USER CODE END Includes */
 
@@ -60,6 +62,7 @@ const osThreadAttr_t defaultTask_attributes = {
 };
 /* USER CODE BEGIN PV */
 static PN532_HandleTypeDef hpn532;
+static AccessControl access_control;
 
 /* USER CODE END PV */
 
@@ -416,6 +419,14 @@ void StartDefaultTask(void *argument)
 
   printf("\r\nSTM32 start\r\n");
 
+  /*
+   * 正式模式：初始化授权名单，然后加载 access_config.c 中明确配置的卡。
+   * 不再自动授权第一张刷到的卡，避免陌生卡在重启后获得权限。
+   */
+  AccessControl_Init(&access_control);
+  printf("[AUTH] Loaded %lu authorized card(s)\r\n",
+         (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
+
   if (PN532_Init(&hpn532, &hi2c1, PN532_DEFAULT_I2C_ADDRESS) == HAL_OK) {
     printf("PN532 found\r\n");
   } else {
@@ -453,6 +464,17 @@ void StartDefaultTask(void *argument)
       }
 
       printf("\r\n");
+
+      /*
+       * 真正的授权判断只有这一句：
+       * PN532 负责读取 UID，AccessControl 负责判断这个 UID 是否在名单中。
+       */
+      if (AccessControl_IsAuthorized(&access_control, uid, uid_len)) {
+        printf("[AUTH] AUTHORIZED\r\n");
+      } else {
+        printf("[AUTH] DENIED\r\n");
+      }
+
       osDelay(1000);
     }
 
