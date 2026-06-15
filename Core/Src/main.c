@@ -38,6 +38,14 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+/*
+ * 当前最小系统板的 PC13 用户 LED 是低电平点亮：
+ * PC13 输出 RESET(0) 时亮，输出 SET(1) 时灭。
+ * 如果你的板子现象相反，只需交换下面两个值。
+ */
+#define STATUS_LED_ON GPIO_PIN_RESET
+#define STATUS_LED_OFF GPIO_PIN_SET
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -81,6 +89,31 @@ void StartDefaultTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void StatusLed_Set(GPIO_PinState state)
+{
+  HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, state);
+}
+
+static void StatusLed_Authorized(void)
+{
+  /* 授权成功：亮灯 500 ms。 */
+  StatusLed_Set(STATUS_LED_ON);
+  osDelay(500U);
+  StatusLed_Set(STATUS_LED_OFF);
+}
+
+static void StatusLed_Denied(void)
+{
+  /* 授权失败：快速闪烁两次。 */
+  for (uint8_t i = 0U; i < 2U; i++)
+  {
+    StatusLed_Set(STATUS_LED_ON);
+    osDelay(120U);
+    StatusLed_Set(STATUS_LED_OFF);
+    osDelay(120U);
+  }
+}
+
 int _write(int file, char *ptr, int len)
 {
   (void)file;
@@ -367,13 +400,24 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, COL1_Pin|COL2_Pin|COL3_Pin|COL4_Pin
                           |BEEF_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : BOARD_LED_Pin */
+  GPIO_InitStruct.Pin = BOARD_LED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(BOARD_LED_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : COL1_Pin COL2_Pin COL3_Pin COL4_Pin
                            BEEF_Pin */
@@ -471,11 +515,13 @@ void StartDefaultTask(void *argument)
        */
       if (AccessControl_IsAuthorized(&access_control, uid, uid_len)) {
         printf("[AUTH] AUTHORIZED\r\n");
+        StatusLed_Authorized();
       } else {
         printf("[AUTH] DENIED\r\n");
+        StatusLed_Denied();
       }
 
-      osDelay(1000);
+      osDelay(500U);
     }
 
     osDelay(100);
