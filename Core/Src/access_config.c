@@ -1,5 +1,10 @@
 #include "access_config.h"
 
+#include <string.h>
+
+/* 学习阶段先把密码固定在程序中；之后可以改为从 Flash 读取。 */
+static const char authorized_pin[] = "123456";
+
 size_t AccessConfig_LoadAuthorizedCards(AccessControl *control)
 {
   size_t loaded_count = 0U;
@@ -23,4 +28,9 @@ size_t AccessConfig_LoadAuthorizedCards(AccessControl *control)
    */
 
   return loaded_count;
+}
+
+bool AccessConfig_IsPinAuthorized(const char *pin)
+{
+  return pin != NULL && strcmp(pin, authorized_pin) == 0;
 }

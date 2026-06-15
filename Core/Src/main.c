@@ -24,10 +24,14 @@
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include "stm32f1xx_hal_uart.h"
 #include "access_config.h"
 #include "access_control.h"
+#include "door_ui.h"
+#include "keypad.h"
 #include "pn532.h"
+#include "ssd1306.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,12 +69,16 @@ UART_HandleTypeDef huart2;
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
 static PN532_HandleTypeDef hpn532;
+static SSD1306_HandleTypeDef holed;
+static DoorUI_HandleTypeDef door_ui;
+static Keypad_HandleTypeDef keypad;
 static AccessControl access_control;
+static bool pin_entry_active;
 
 /* USER CODE END PV */
 
@@ -111,6 +119,95 @@ static void StatusLed_Denied(void)
     osDelay(120U);
     StatusLed_Set(STATUS_LED_OFF);
     osDelay(120U);
+  }
+}
+
+static void ShowAccessResult(bool authorized)
+{
+  DoorUI_ShowAccessResult(&door_ui, authorized);
+
+  if (authorized)
+  {
+    printf("[AUTH] AUTHORIZED\r\n");
+    StatusLed_Authorized();
+  }
+  else
+  {
+    printf("[AUTH] DENIED\r\n");
+    StatusLed_Denied();
+  }
+
+  osDelay(500U);
+  DoorUI_ShowIdle(&door_ui);
+}
+
+static void BeginPinEntry(void)
+{
+  pin_entry_active = true;
+  DoorUI_BeginPinEntry(&door_ui);
+  printf("[PIN] Entry started\r\n");
+}
+
+static void HandleKeypadKey(char key)
+{
+  if (key == KEYPAD_NO_KEY)
+  {
+    return;
+  }
+
+  printf("[KEYPAD] Key: %c\r\n", key);
+
+  if (key >= '0' && key <= '9')
+  {
+    if (!pin_entry_active)
+    {
+      BeginPinEntry();
+    }
+
+    (void)DoorUI_EnterPinDigit(&door_ui, key);
+    return;
+  }
+
+  switch (key)
+  {
+    case 'A':
+      BeginPinEntry();
+      break;
+
+    case '*':
+      if (pin_entry_active)
+      {
+        (void)DoorUI_BackspacePin(&door_ui);
+      }
+      break;
+
+    case '#':
+      if (pin_entry_active)
+      {
+        bool authorized = AccessConfig_IsPinAuthorized(DoorUI_GetPin(&door_ui));
+
+        printf("[PIN] Submitted %u digit(s)\r\n",
+               (unsigned int)DoorUI_GetPinLength(&door_ui));
+        pin_entry_active = false;
+        ShowAccessResult(authorized);
+      }
+      break;
+
+    case 'B':
+      pin_entry_active = false;
+      DoorUI_ShowIdle(&door_ui);
+      printf("[PIN] Entry cancelled\r\n");
+      break;
+
+    case 'C':
+      if (pin_entry_active)
+      {
+        DoorUI_BeginPinEntry(&door_ui);
+      }
+      break;
+
+    default:
+      break;
   }
 }
 
@@ -409,8 +506,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, COL1_Pin|COL2_Pin|COL3_Pin|COL4_Pin
-                          |BEEF_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, COL1_Pin|COL2_Pin|COL3_Pin|COL4_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(BEEF_GPIO_Port, BEEF_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : BOARD_LED_Pin */
   GPIO_InitStruct.Pin = BOARD_LED_Pin;
@@ -470,6 +569,22 @@ void StartDefaultTask(void *argument)
   AccessControl_Init(&access_control);
   printf("[AUTH] Loaded %lu authorized card(s)\r\n",
          (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
+  Keypad_Init(&keypad);
+  pin_entry_active = false;
+
+  /*
+   * OLED 和 PN532 共用同一个 I2C1。
+   * 当前都在 defaultTask 中顺序访问，所以不会同时占用总线。
+   */
+  DoorUI_Init(&door_ui, NULL);
+  if (SSD1306_Init(&holed, &hi2c1, SSD1306_DEFAULT_I2C_ADDRESS) == HAL_OK) {
+    printf("OLED found at 0x3C\r\n");
+    DoorUI_Init(&door_ui, &holed);
+    DoorUI_ShowBootAnimation(&door_ui);
+    DoorUI_ShowIdle(&door_ui);
+  } else {
+    printf("OLED not found at 0x3C\r\n");
+  }
 
   if (PN532_Init(&hpn532, &hi2c1, PN532_DEFAULT_I2C_ADDRESS) == HAL_OK) {
     printf("PN532 found\r\n");
@@ -497,6 +612,20 @@ void StartDefaultTask(void *argument)
 
   for(;;)
   {
+    char key = Keypad_GetKey(&keypad);
+
+    HandleKeypadKey(key);
+
+    /*
+     * 输入密码期间暂停 PN532 轮询，让按键扫描保持流畅，
+     * 同时避免刷卡结果覆盖密码输入页面。
+     */
+    if (pin_entry_active)
+    {
+      osDelay(15U);
+      continue;
+    }
+
     uint8_t uid[PN532_MAX_UID_LENGTH];
     uint8_t uid_len = sizeof(uid);
 
@@ -514,17 +643,13 @@ void StartDefaultTask(void *argument)
        * PN532 负责读取 UID，AccessControl 负责判断这个 UID 是否在名单中。
        */
       if (AccessControl_IsAuthorized(&access_control, uid, uid_len)) {
-        printf("[AUTH] AUTHORIZED\r\n");
-        StatusLed_Authorized();
+        ShowAccessResult(true);
       } else {
-        printf("[AUTH] DENIED\r\n");
-        StatusLed_Denied();
+        ShowAccessResult(false);
       }
-
-      osDelay(500U);
     }
 
-    osDelay(100);
+    osDelay(15U);
   }
   /* USER CODE END 5 */
 }

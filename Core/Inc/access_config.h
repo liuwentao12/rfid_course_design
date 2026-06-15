@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #include "access_control.h"
 
@@ -14,6 +15,9 @@ extern "C" {
  * 返回成功加载的卡片数量。
  */
 size_t AccessConfig_LoadAuthorizedCards(AccessControl *control);
+
+/* 检查输入的本地开门密码是否正确。 */
+bool AccessConfig_IsPinAuthorized(const char *pin);
 
 #ifdef __cplusplus
 }
