@@ -79,12 +79,14 @@ void Error_Handler(void);
 #define ROW3_GPIO_Port GPIOB
 #define ROW4_Pin GPIO_PIN_15
 #define ROW4_GPIO_Port GPIOB
+#define BEEF_Pin GPIO_PIN_8
+#define BEEF_GPIO_Port GPIOA
 #define CAM_TX_Pin GPIO_PIN_9
 #define CAM_TX_GPIO_Port GPIOA
 #define CAM_RX_Pin GPIO_PIN_10
 #define CAM_RX_GPIO_Port GPIOA
-#define BEEF_Pin GPIO_PIN_8
-#define BEEF_GPIO_Port GPIOB
+#define LED_Pin GPIO_PIN_15
+#define LED_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
