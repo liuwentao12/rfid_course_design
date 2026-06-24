@@ -28,7 +28,9 @@
 #include "stm32f1xx_hal_uart.h"
 #include "access_config.h"
 #include "access_control.h"
+#include "door_hardware.h"
 #include "door_ui.h"
+#include "esp32_link.h"
 #include "keypad.h"
 #include "pn532.h"
 #include "ssd1306.h"
@@ -49,6 +51,9 @@
  */
 #define STATUS_LED_ON GPIO_PIN_RESET
 #define STATUS_LED_OFF GPIO_PIN_SET
+
+#define AUTH_FAILURE_ALERT_THRESHOLD 3U
+#define AUTH_ALERT_COOLDOWN_MS 30000U
 
 /* USER CODE END PD */
 
@@ -78,7 +83,10 @@ static SSD1306_HandleTypeDef holed;
 static DoorUI_HandleTypeDef door_ui;
 static Keypad_HandleTypeDef keypad;
 static AccessControl access_control;
+static ESP32Link_HandleTypeDef esp32_link;
 static bool pin_entry_active;
+static uint8_t consecutive_auth_failures;
+static uint32_t last_capture_alert_tick;
 
 /* USER CODE END PV */
 
@@ -129,16 +137,66 @@ static void ShowAccessResult(bool authorized)
   if (authorized)
   {
     printf("[AUTH] AUTHORIZED\r\n");
+    DoorHardware_OnAccessGranted();
     StatusLed_Authorized();
   }
   else
   {
     printf("[AUTH] DENIED\r\n");
+    DoorHardware_OnAccessDenied();
     StatusLed_Denied();
   }
 
   osDelay(500U);
   DoorUI_ShowIdle(&door_ui);
+}
+
+static void HandleAuthResult(ESP32Link_AuthMethod method,
+                             bool authorized,
+                             const uint8_t *uid,
+                             uint8_t uid_length)
+{
+  ESP32Link_AuthResult result;
+  uint32_t now = HAL_GetTick();
+
+  if (authorized)
+  {
+    consecutive_auth_failures = 0U;
+    result = ESP32_LINK_AUTH_GRANTED;
+  }
+  else
+  {
+    if (consecutive_auth_failures < UINT8_MAX)
+    {
+      consecutive_auth_failures++;
+    }
+    result = ESP32_LINK_AUTH_DENIED;
+  }
+
+  (void)ESP32Link_QueueAuthEvent(&esp32_link,
+                                 method,
+                                 result,
+                                 consecutive_auth_failures,
+                                 uid,
+                                 uid_length);
+
+  if (!authorized &&
+      consecutive_auth_failures >= AUTH_FAILURE_ALERT_THRESHOLD &&
+      (last_capture_alert_tick == 0U ||
+       (uint32_t)(now - last_capture_alert_tick) >= AUTH_ALERT_COOLDOWN_MS))
+  {
+    printf("[ALERT] Consecutive failures: %u\r\n", (unsigned int)consecutive_auth_failures);
+    (void)ESP32Link_QueueCaptureAlert(&esp32_link,
+                                      ESP32_LINK_ALERT_FAILURE_THRESHOLD,
+                                      consecutive_auth_failures,
+                                      uid,
+                                      uid_length);
+    DoorHardware_OnAlert();
+    last_capture_alert_tick = now;
+  }
+
+  ESP32Link_Poll(&esp32_link);
+  ShowAccessResult(authorized);
 }
 
 static void BeginPinEntry(void)
@@ -189,7 +247,7 @@ static void HandleKeypadKey(char key)
         printf("[PIN] Submitted %u digit(s)\r\n",
                (unsigned int)DoorUI_GetPinLength(&door_ui));
         pin_entry_active = false;
-        ShowAccessResult(authorized);
+        HandleAuthResult(ESP32_LINK_AUTH_METHOD_PIN, authorized, NULL, 0U);
       }
       break;
 
@@ -570,7 +628,13 @@ void StartDefaultTask(void *argument)
   printf("[AUTH] Loaded %lu authorized card(s)\r\n",
          (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
   Keypad_Init(&keypad);
+  DoorHardware_Init();
+  ESP32Link_Init(&esp32_link, &huart1);
+  (void)ESP32Link_QueueHello(&esp32_link);
+  (void)ESP32Link_QueueStatusQuery(&esp32_link);
   pin_entry_active = false;
+  consecutive_auth_failures = 0U;
+  last_capture_alert_tick = 0U;
 
   /*
    * OLED 和 PN532 共用同一个 I2C1。
@@ -612,6 +676,8 @@ void StartDefaultTask(void *argument)
 
   for(;;)
   {
+    ESP32Link_Poll(&esp32_link);
+
     char key = Keypad_GetKey(&keypad);
 
     HandleKeypadKey(key);
@@ -643,12 +709,13 @@ void StartDefaultTask(void *argument)
        * PN532 负责读取 UID，AccessControl 负责判断这个 UID 是否在名单中。
        */
       if (AccessControl_IsAuthorized(&access_control, uid, uid_len)) {
-        ShowAccessResult(true);
+        HandleAuthResult(ESP32_LINK_AUTH_METHOD_NFC, true, uid, uid_len);
       } else {
-        ShowAccessResult(false);
+        HandleAuthResult(ESP32_LINK_AUTH_METHOD_NFC, false, uid, uid_len);
       }
     }
 
+    ESP32Link_Poll(&esp32_link);
     osDelay(15U);
   }
   /* USER CODE END 5 */
