@@ -112,6 +112,7 @@ void DoorUI_ShowAccessResult(DoorUI_HandleTypeDef *ui, bool authorized)
   DoorUI_Refresh(ui);
 }
 
+//  清空密码，开始输入
 void DoorUI_BeginPinEntry(DoorUI_HandleTypeDef *ui)
 {
   if (ui == NULL)
@@ -124,6 +125,7 @@ void DoorUI_BeginPinEntry(DoorUI_HandleTypeDef *ui)
   DoorUI_DrawPin(ui);
 }
 
+//DoorUI_EnterPinDigit()
 bool DoorUI_EnterPinDigit(DoorUI_HandleTypeDef *ui, char digit)
 {
   if (ui == NULL || digit < '0' || digit > '9' || ui->pin_length >= DOOR_UI_MAX_PIN_LENGTH)
@@ -139,6 +141,7 @@ bool DoorUI_EnterPinDigit(DoorUI_HandleTypeDef *ui, char digit)
   return true;
 }
 
+//  删除最后一个数字
 bool DoorUI_BackspacePin(DoorUI_HandleTypeDef *ui)
 {
   if (ui == NULL || ui->pin_length == 0U)
@@ -153,11 +156,13 @@ bool DoorUI_BackspacePin(DoorUI_HandleTypeDef *ui)
   return true;
 }
 
+//  获取当前密码字符串
 const char *DoorUI_GetPin(const DoorUI_HandleTypeDef *ui)
 {
   return ui == NULL ? "" : ui->pin;
 }
 
+//获取当前密码长度
 uint8_t DoorUI_GetPinLength(const DoorUI_HandleTypeDef *ui)
 {
   return ui == NULL ? 0U : ui->pin_length;

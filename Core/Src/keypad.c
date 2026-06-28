@@ -25,10 +25,10 @@ static const uint16_t keypad_row_pins[KEYPAD_ROW_COUNT] = {
 };
 
 static const char keypad_map[KEYPAD_ROW_COUNT][KEYPAD_COLUMN_COUNT] = {
-  {'1', '2', '3', 'A'},
-  {'4', '5', '6', 'B'},
-  {'7', '8', '9', 'C'},
-  {'*', '0', '#', 'D'}
+  {'1', '2', '3', KEYPAD_KEY_CONFIRM},
+  {'4', '5', '6', KEYPAD_KEY_DELETE},
+  {'7', '8', '9', KEYPAD_KEY_CHANGE},
+  {KEYPAD_KEY_BACK, '0', KEYPAD_KEY_UNLOCK, KEYPAD_KEY_ADMIN}
 };
 
 static void Keypad_SetAllColumns(GPIO_PinState state)

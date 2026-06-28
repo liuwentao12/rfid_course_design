@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+﻿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -44,13 +44,9 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-/*
- * 当前最小系统板的 PC13 用户 LED 是低电平点亮：
- * PC13 输出 RESET(0) 时亮，输出 SET(1) 时灭。
- * 如果你的板子现象相反，只需交换下面两个值。
- */
-#define STATUS_LED_ON GPIO_PIN_RESET
-#define STATUS_LED_OFF GPIO_PIN_SET
+
+#define STATUS_LED_ON GPIO_PIN_SET
+#define STATUS_LED_OFF GPIO_PIN_RESET
 
 #define AUTH_FAILURE_ALERT_THRESHOLD 3U
 #define AUTH_ALERT_COOLDOWN_MS 30000U
@@ -70,10 +66,24 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+/* Definitions for DoorTask */
+osThreadId_t DoorTaskHandle;
+const osThreadAttr_t DoorTask_attributes = {
+  .name = "DoorTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for NfcTask */
+osThreadId_t NfcTaskHandle;
+const osThreadAttr_t NfcTask_attributes = {
+  .name = "NfcTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
+/* Definitions for Esp32Task */
+osThreadId_t Esp32TaskHandle;
+const osThreadAttr_t Esp32Task_attributes = {
+  .name = "Esp32Task",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
@@ -97,7 +107,9 @@ static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
-void StartDefaultTask(void *argument);
+void StartDoorTask(void *argument);
+void StartNfcTask(void *argument);
+void StartEsp32Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -228,39 +240,41 @@ static void HandleKeypadKey(char key)
 
   switch (key)
   {
-    case 'A':
-      BeginPinEntry();
-      break;
-
-    case '*':
-      if (pin_entry_active)
-      {
-        (void)DoorUI_BackspacePin(&door_ui);
-      }
-      break;
-
-    case '#':
+    case KEYPAD_KEY_UNLOCK:
+      //验证密码然后开锁
       if (pin_entry_active)
       {
         bool authorized = AccessConfig_IsPinAuthorized(DoorUI_GetPin(&door_ui));
 
-        printf("[PIN] Submitted %u digit(s)\r\n",
-               (unsigned int)DoorUI_GetPinLength(&door_ui));
         pin_entry_active = false;
         HandleAuthResult(ESP32_LINK_AUTH_METHOD_PIN, authorized, NULL, 0U);
       }
+      else
+      {
+        BeginPinEntry();
+      }
       break;
-
-    case 'B':
-      pin_entry_active = false;
-      DoorUI_ShowIdle(&door_ui);
-      printf("[PIN] Entry cancelled\r\n");
-      break;
-
-    case 'C':
+    case KEYPAD_KEY_BACK:
+      //返回
       if (pin_entry_active)
       {
-        DoorUI_BeginPinEntry(&door_ui);
+        pin_entry_active = false;
+        DoorUI_ShowIdle(&door_ui);
+      }
+      break;
+    case KEYPAD_KEY_ADMIN:
+      //输入录入nfc卡片
+      break;
+    case KEYPAD_KEY_CHANGE:
+      //修改密码
+      break;
+    case KEYPAD_KEY_CONFIRM:
+      //确定
+      break;
+    case KEYPAD_KEY_DELETE:
+      if (pin_entry_active)
+      {
+        (void)DoorUI_BackspacePin(&door_ui);
       }
       break;
 
@@ -334,8 +348,14 @@ int main(void)
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* creation of DoorTask */
+  DoorTaskHandle = osThreadNew(StartDoorTask, NULL, &DoorTask_attributes);
+
+  /* creation of NfcTask */
+  NfcTaskHandle = osThreadNew(StartNfcTask, NULL, &NfcTask_attributes);
+
+  /* creation of Esp32Task */
+  Esp32TaskHandle = osThreadNew(StartEsp32Task, NULL, &Esp32Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -606,119 +626,87 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_StartDoorTask */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the DoorTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_StartDoorTask */
+void StartDoorTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   (void)argument;
-
-  printf("\r\nSTM32 start\r\n");
-
-  /*
-   * 正式模式：初始化授权名单，然后加载 access_config.c 中明确配置的卡。
-   * 不再自动授权第一张刷到的卡，避免陌生卡在重启后获得权限。
-   */
+  printf("\r\nDoorTask start\r\n");
+  // 初始化 AccessControl
   AccessControl_Init(&access_control);
   printf("[AUTH] Loaded %lu authorized card(s)\r\n",
-         (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
+       (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
+
   Keypad_Init(&keypad);
   DoorHardware_Init();
-  ESP32Link_Init(&esp32_link, &huart1);
-  (void)ESP32Link_QueueHello(&esp32_link);
-  (void)ESP32Link_QueueStatusQuery(&esp32_link);
+
   pin_entry_active = false;
   consecutive_auth_failures = 0U;
   last_capture_alert_tick = 0U;
 
-  /*
-   * OLED 和 PN532 共用同一个 I2C1。
-   * 当前都在 defaultTask 中顺序访问，所以不会同时占用总线。
-   */
   DoorUI_Init(&door_ui, NULL);
-  if (SSD1306_Init(&holed, &hi2c1, SSD1306_DEFAULT_I2C_ADDRESS) == HAL_OK) {
-    printf("OLED found at 0x3C\r\n");
+  if (SSD1306_Init(&holed, &hi2c1, SSD1306_DEFAULT_I2C_ADDRESS) == HAL_OK)
+  {
     DoorUI_Init(&door_ui, &holed);
     DoorUI_ShowBootAnimation(&door_ui);
     DoorUI_ShowIdle(&door_ui);
-  } else {
-    printf("OLED not found at 0x3C\r\n");
   }
-
-  if (PN532_Init(&hpn532, &hi2c1, PN532_DEFAULT_I2C_ADDRESS) == HAL_OK) {
-    printf("PN532 found\r\n");
-  } else {
-    printf("PN532 not found\r\n");
-  }
-
-  uint32_t fw = 0;
-  if (PN532_GetFirmwareVersion(&hpn532, &fw) == HAL_OK) {
-    printf("PN532 OK\r\n");
-    printf("IC=0x%02lX Ver=%lu.%lu Support=0x%02lX\r\n",
-           (unsigned long)((fw >> 24) & 0xFFU),
-           (unsigned long)((fw >> 16) & 0xFFU),
-           (unsigned long)((fw >> 8) & 0xFFU),
-           (unsigned long)(fw & 0xFFU));
-  } else {
-    printf("PN532 firmware failed\r\n");
-  }
-
-  if (PN532_SAMConfig(&hpn532) == HAL_OK) {
-    printf("SAM OK\r\n");
-  } else {
-    printf("SAM failed\r\n");
-  }
-
-  for(;;)
+  else
   {
-    ESP32Link_Poll(&esp32_link);
-
+    printf("OLED not found\r\n");
+  }
+  for (;;) {
+    // 扫描键盘
     char key = Keypad_GetKey(&keypad);
-
     HandleKeypadKey(key);
-
-    /*
-     * 输入密码期间暂停 PN532 轮询，让按键扫描保持流畅，
-     * 同时避免刷卡结果覆盖密码输入页面。
-     */
-    if (pin_entry_active)
-    {
-      osDelay(15U);
-      continue;
-    }
-
-    uint8_t uid[PN532_MAX_UID_LENGTH];
-    uint8_t uid_len = sizeof(uid);
-
-    if (PN532_ReadCardUID(&hpn532, uid, &uid_len) == HAL_OK) {
-      printf("Card UID: ");
-
-      for (uint8_t i = 0; i < uid_len; i++) {
-        printf("%02X ", uid[i]);
-      }
-
-      printf("\r\n");
-
-      /*
-       * 真正的授权判断只有这一句：
-       * PN532 负责读取 UID，AccessControl 负责判断这个 UID 是否在名单中。
-       */
-      if (AccessControl_IsAuthorized(&access_control, uid, uid_len)) {
-        HandleAuthResult(ESP32_LINK_AUTH_METHOD_NFC, true, uid, uid_len);
-      } else {
-        HandleAuthResult(ESP32_LINK_AUTH_METHOD_NFC, false, uid, uid_len);
-      }
-    }
-
-    ESP32Link_Poll(&esp32_link);
-    osDelay(15U);
+    // 处理 PIN
+    // 接收 NfcTask 发来的 UID
+    // 统一处理认证结果
+    osDelay(10);
   }
   /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartNfcTask */
+/**
+* @brief Function implementing the NfcTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartNfcTask */
+void StartNfcTask(void *argument)
+{
+  /* USER CODE BEGIN StartNfcTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartNfcTask */
+}
+
+/* USER CODE BEGIN Header_StartEsp32Task */
+/**
+* @brief Function implementing the Esp32Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartEsp32Task */
+void StartEsp32Task(void *argument)
+{
+  /* USER CODE BEGIN StartEsp32Task */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartEsp32Task */
 }
 
 /**

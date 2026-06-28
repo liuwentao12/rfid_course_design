@@ -12,6 +12,13 @@ extern "C" {
 
 #define KEYPAD_NO_KEY '\0'
 
+#define KEYPAD_KEY_CONFIRM 'O'
+#define KEYPAD_KEY_DELETE  'X'
+#define KEYPAD_KEY_CHANGE  'M'
+#define KEYPAD_KEY_BACK    'R'
+#define KEYPAD_KEY_UNLOCK  'U'
+#define KEYPAD_KEY_ADMIN   'A'
+
 typedef struct
 {
   char last_raw_key;
