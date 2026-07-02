@@ -38,6 +38,17 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum {
+  DOOR_EVENT_PIN_RESULT,
+  DOOR_EVENT_NFC_RESULT,
+}DoorEventType;
+
+typedef struct{
+  DoorEventType type;
+  bool authorized;
+  uint8_t uid[PN532_MAX_UID_LENGTH];
+  uint8_t uid_len;
+} DoorEvent;
 
 /* USER CODE END PTD */
 
@@ -66,11 +77,11 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
-/* Definitions for DoorTask */
-osThreadId_t DoorTaskHandle;
-const osThreadAttr_t DoorTask_attributes = {
-  .name = "DoorTask",
-  .stack_size = 512 * 4,
+/* Definitions for PasswordTask */
+osThreadId_t PasswordTaskHandle;
+const osThreadAttr_t PasswordTask_attributes = {
+  .name = "PasswordTask",
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for NfcTask */
@@ -78,7 +89,7 @@ osThreadId_t NfcTaskHandle;
 const osThreadAttr_t NfcTask_attributes = {
   .name = "NfcTask",
   .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for Esp32Task */
 osThreadId_t Esp32TaskHandle;
@@ -86,6 +97,18 @@ const osThreadAttr_t Esp32Task_attributes = {
   .name = "Esp32Task",
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for CtrlTask */
+osThreadId_t CtrlTaskHandle;
+const osThreadAttr_t CtrlTask_attributes = {
+  .name = "CtrlTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+/* Definitions for DoorEventQueue */
+osMessageQueueId_t DoorEventQueueHandle;
+const osMessageQueueAttr_t DoorEventQueue_attributes = {
+  .name = "DoorEventQueue"
 };
 /* USER CODE BEGIN PV */
 static PN532_HandleTypeDef hpn532;
@@ -107,9 +130,10 @@ static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
-void StartDoorTask(void *argument);
+void StartPasswordTask(void *argument);
 void StartNfcTask(void *argument);
 void StartEsp32Task(void *argument);
+void StartCtrlTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -247,7 +271,12 @@ static void HandleKeypadKey(char key)
         bool authorized = AccessConfig_IsPinAuthorized(DoorUI_GetPin(&door_ui));
 
         pin_entry_active = false;
-        HandleAuthResult(ESP32_LINK_AUTH_METHOD_PIN, authorized, NULL, 0U);
+        DoorEvent event = {0};
+        event.type = DOOR_EVENT_PIN_RESULT;
+        event.authorized = authorized;
+        event.uid_len = 0U;
+
+        osMessageQueuePut(DoorEventQueueHandle, &event, 0U, 0U);
       }
       else
       {
@@ -343,19 +372,26 @@ int main(void)
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of DoorEventQueue */
+  DoorEventQueueHandle = osMessageQueueNew (8, sizeof(DoorEvent), &DoorEventQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of DoorTask */
-  DoorTaskHandle = osThreadNew(StartDoorTask, NULL, &DoorTask_attributes);
+  /* creation of PasswordTask */
+  PasswordTaskHandle = osThreadNew(StartPasswordTask, NULL, &PasswordTask_attributes);
 
   /* creation of NfcTask */
   NfcTaskHandle = osThreadNew(StartNfcTask, NULL, &NfcTask_attributes);
 
   /* creation of Esp32Task */
   Esp32TaskHandle = osThreadNew(StartEsp32Task, NULL, &Esp32Task_attributes);
+
+  /* creation of CtrlTask */
+  CtrlTaskHandle = osThreadNew(StartCtrlTask, NULL, &CtrlTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -626,14 +662,14 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDoorTask */
+/* USER CODE BEGIN Header_StartPasswordTask */
 /**
-  * @brief  Function implementing the DoorTask thread.
+  * @brief  Function implementing the PasswordTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDoorTask */
-void StartDoorTask(void *argument)
+/* USER CODE END Header_StartPasswordTask */
+void StartPasswordTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   (void)argument;
@@ -707,6 +743,48 @@ void StartEsp32Task(void *argument)
     osDelay(1);
   }
   /* USER CODE END StartEsp32Task */
+}
+
+/* USER CODE BEGIN Header_StartCtrlTask */
+/**
+* @brief Function implementing the CtrlTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartCtrlTask */
+void StartCtrlTask(void *argument)
+{
+  /* USER CODE BEGIN StartCtrlTask */
+  (void)argument;
+
+  DoorEvent event;
+
+  for (;;)
+  {
+    if (osMessageQueueGet(DoorEventQueueHandle, &event, NULL, osWaitForever) == osOK)
+    {
+      switch (event.type)
+      {
+        case DOOR_EVENT_PIN_RESULT:
+          HandleAuthResult(ESP32_LINK_AUTH_METHOD_PIN,
+                           event.authorized,
+                           NULL,
+                           0U);
+          break;
+
+        case DOOR_EVENT_NFC_RESULT:
+          HandleAuthResult(ESP32_LINK_AUTH_METHOD_NFC,
+                           event.authorized,
+                           event.uid,
+                           event.uid_len);
+          break;
+
+        default:
+          break;
+      }
+    }
+  }
+  /* USER CODE END StartCtrlTask */
 }
 
 /**
