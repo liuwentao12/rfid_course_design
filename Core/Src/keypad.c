@@ -1,7 +1,5 @@
 #include "keypad.h"
 
-#include <stdbool.h>
-
 #include "main.h"
 
 #define KEYPAD_ROW_COUNT 4U
@@ -31,46 +29,40 @@ static const char keypad_map[KEYPAD_ROW_COUNT][KEYPAD_COLUMN_COUNT] = {
   {KEYPAD_KEY_BACK, '0', KEYPAD_KEY_UNLOCK, KEYPAD_KEY_ADMIN}
 };
 
+static void Keypad_SetColumn(uint8_t column, GPIO_PinState state)
+{
+  HAL_GPIO_WritePin(keypad_column_ports[column], keypad_column_pins[column], state);
+}
+
 static void Keypad_SetAllColumns(GPIO_PinState state)
 {
   for (uint8_t column = 0U; column < KEYPAD_COLUMN_COUNT; column++)
   {
-    HAL_GPIO_WritePin(keypad_column_ports[column], keypad_column_pins[column], state);
+    Keypad_SetColumn(column, state);
   }
 }
 
 static char Keypad_ScanRaw(void)
 {
-  char detected_key = KEYPAD_NO_KEY;
-
-  /*
-   * 行引脚使用上拉输入。逐列输出低电平：
-   * 如果某个按键按下，对应行会被该列拉低。
-   */
   Keypad_SetAllColumns(GPIO_PIN_SET);
 
   for (uint8_t column = 0U; column < KEYPAD_COLUMN_COUNT; column++)
   {
-    HAL_GPIO_WritePin(keypad_column_ports[column], keypad_column_pins[column], GPIO_PIN_RESET);
+    Keypad_SetColumn(column, GPIO_PIN_RESET);
 
     for (uint8_t row = 0U; row < KEYPAD_ROW_COUNT; row++)
     {
       if (HAL_GPIO_ReadPin(keypad_row_ports[row], keypad_row_pins[row]) == GPIO_PIN_RESET)
       {
-        detected_key = keypad_map[row][column];
-        break;
+        Keypad_SetColumn(column, GPIO_PIN_SET);
+        return keypad_map[row][column];
       }
     }
 
-    HAL_GPIO_WritePin(keypad_column_ports[column], keypad_column_pins[column], GPIO_PIN_SET);
-
-    if (detected_key != KEYPAD_NO_KEY)
-    {
-      break;
-    }
+    Keypad_SetColumn(column, GPIO_PIN_SET);
   }
 
-  return detected_key;
+  return KEYPAD_NO_KEY;
 }
 
 void Keypad_Init(Keypad_HandleTypeDef *keypad)
@@ -89,15 +81,12 @@ void Keypad_Init(Keypad_HandleTypeDef *keypad)
 
 char Keypad_GetKey(Keypad_HandleTypeDef *keypad)
 {
-  char raw_key;
-
   if (keypad == NULL)
   {
     return KEYPAD_NO_KEY;
   }
 
-  raw_key = Keypad_ScanRaw();
-
+  char raw_key = Keypad_ScanRaw();
   if (raw_key != keypad->last_raw_key)
   {
     keypad->last_raw_key = raw_key;
@@ -116,7 +105,6 @@ char Keypad_GetKey(Keypad_HandleTypeDef *keypad)
   }
 
   keypad->stable_key = raw_key;
-
   if (keypad->stable_key == KEYPAD_NO_KEY)
   {
     keypad->key_reported = false;

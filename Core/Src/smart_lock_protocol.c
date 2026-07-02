@@ -11,14 +11,7 @@ static uint16_t SmartLockProtocol_Crc16Update(uint16_t crc, uint8_t byte)
 
   for (uint8_t bit = 0U; bit < 8U; bit++)
   {
-    if ((crc & 0x8000U) != 0U)
-    {
-      crc = (uint16_t)((crc << 1U) ^ SMART_LOCK_CRC_POLY);
-    }
-    else
-    {
-      crc = (uint16_t)(crc << 1U);
-    }
+    crc = (uint16_t)((crc & 0x8000U) != 0U ? (crc << 1U) ^ SMART_LOCK_CRC_POLY : crc << 1U);
   }
 
   return crc;

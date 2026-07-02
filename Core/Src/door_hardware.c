@@ -30,7 +30,7 @@
 #define DOOR_HW_HAS_LOCK 0
 #endif
 
-static GPIO_PinState DoorHardware_InvertState(GPIO_PinState state)
+static GPIO_PinState DoorHardware_Invert(GPIO_PinState state)
 {
   return state == GPIO_PIN_SET ? GPIO_PIN_RESET : GPIO_PIN_SET;
 }
@@ -38,9 +38,8 @@ static GPIO_PinState DoorHardware_InvertState(GPIO_PinState state)
 static void DoorHardware_SetBuzzer(bool active)
 {
 #if defined(BEEF_Pin) && defined(BEEF_GPIO_Port)
-  HAL_GPIO_WritePin(BEEF_GPIO_Port,
-                    BEEF_Pin,
-                    active ? DOOR_BUZZER_ACTIVE_STATE : DoorHardware_InvertState(DOOR_BUZZER_ACTIVE_STATE));
+  HAL_GPIO_WritePin(BEEF_GPIO_Port, BEEF_Pin,
+                    active ? DOOR_BUZZER_ACTIVE_STATE : DoorHardware_Invert(DOOR_BUZZER_ACTIVE_STATE));
 #else
   (void)active;
 #endif
@@ -49,9 +48,8 @@ static void DoorHardware_SetBuzzer(bool active)
 static void DoorHardware_SetLockUnlocked(bool unlocked)
 {
 #if DOOR_HW_HAS_LOCK
-  HAL_GPIO_WritePin(DOOR_HW_LOCK_PORT,
-                    DOOR_HW_LOCK_PIN,
-                    unlocked ? DOOR_LOCK_ACTIVE_STATE : DoorHardware_InvertState(DOOR_LOCK_ACTIVE_STATE));
+  HAL_GPIO_WritePin(DOOR_HW_LOCK_PORT, DOOR_HW_LOCK_PIN,
+                    unlocked ? DOOR_LOCK_ACTIVE_STATE : DoorHardware_Invert(DOOR_LOCK_ACTIVE_STATE));
 #else
   (void)unlocked;
 #endif
@@ -64,7 +62,6 @@ static void DoorHardware_Beep(uint8_t count, uint32_t on_ms, uint32_t off_ms)
     DoorHardware_SetBuzzer(true);
     osDelay(on_ms);
     DoorHardware_SetBuzzer(false);
-
     if ((uint8_t)(i + 1U) < count)
     {
       osDelay(off_ms);

@@ -1,4 +1,4 @@
-﻿/* USER CODE BEGIN Header */
+/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -25,12 +25,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include "stm32f1xx_hal_uart.h"
 #include "access_config.h"
 #include "access_control.h"
 #include "door_hardware.h"
 #include "door_ui.h"
-#include "esp32_link.h"
 #include "keypad.h"
 #include "pn532.h"
 #include "ssd1306.h"
@@ -39,11 +39,11 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 typedef enum {
-  DOOR_EVENT_PIN_RESULT,
+  DOOR_EVENT_PIN_RESULT = 1,
   DOOR_EVENT_NFC_RESULT,
-}DoorEventType;
+} DoorEventType;
 
-typedef struct{
+typedef struct {
   DoorEventType type;
   bool authorized;
   uint8_t uid[PN532_MAX_UID_LENGTH];
@@ -116,7 +116,6 @@ static SSD1306_HandleTypeDef holed;
 static DoorUI_HandleTypeDef door_ui;
 static Keypad_HandleTypeDef keypad;
 static AccessControl access_control;
-static ESP32Link_HandleTypeDef esp32_link;
 static bool pin_entry_active;
 static uint8_t consecutive_auth_failures;
 static uint32_t last_capture_alert_tick;
@@ -187,52 +186,53 @@ static void ShowAccessResult(bool authorized)
   DoorUI_ShowIdle(&door_ui);
 }
 
-static void HandleAuthResult(ESP32Link_AuthMethod method,
-                             bool authorized,
-                             const uint8_t *uid,
-                             uint8_t uid_length)
+static bool AuthAlert_IsDue(uint32_t now)
 {
-  ESP32Link_AuthResult result;
+  return consecutive_auth_failures >= AUTH_FAILURE_ALERT_THRESHOLD &&
+         (last_capture_alert_tick == 0U ||
+          (uint32_t)(now - last_capture_alert_tick) >= AUTH_ALERT_COOLDOWN_MS);
+}
+
+static void HandleAuthResult(bool authorized)
+{
   uint32_t now = HAL_GetTick();
 
   if (authorized)
   {
     consecutive_auth_failures = 0U;
-    result = ESP32_LINK_AUTH_GRANTED;
   }
-  else
+  else if (consecutive_auth_failures < UINT8_MAX)
   {
-    if (consecutive_auth_failures < UINT8_MAX)
-    {
-      consecutive_auth_failures++;
-    }
-    result = ESP32_LINK_AUTH_DENIED;
+    consecutive_auth_failures++;
   }
 
-  (void)ESP32Link_QueueAuthEvent(&esp32_link,
-                                 method,
-                                 result,
-                                 consecutive_auth_failures,
-                                 uid,
-                                 uid_length);
-
-  if (!authorized &&
-      consecutive_auth_failures >= AUTH_FAILURE_ALERT_THRESHOLD &&
-      (last_capture_alert_tick == 0U ||
-       (uint32_t)(now - last_capture_alert_tick) >= AUTH_ALERT_COOLDOWN_MS))
+  if (!authorized && AuthAlert_IsDue(now))
   {
     printf("[ALERT] Consecutive failures: %u\r\n", (unsigned int)consecutive_auth_failures);
-    (void)ESP32Link_QueueCaptureAlert(&esp32_link,
-                                      ESP32_LINK_ALERT_FAILURE_THRESHOLD,
-                                      consecutive_auth_failures,
-                                      uid,
-                                      uid_length);
     DoorHardware_OnAlert();
     last_capture_alert_tick = now;
   }
 
-  ESP32Link_Poll(&esp32_link);
   ShowAccessResult(authorized);
+}
+
+static osStatus_t DoorEvent_Send(DoorEventType type,
+                                 bool authorized,
+                                 const uint8_t *uid,
+                                 uint8_t uid_len)
+{
+  DoorEvent event = {0};
+
+  event.type = type;
+  event.authorized = authorized;
+  event.uid_len = uid_len > PN532_MAX_UID_LENGTH ? PN532_MAX_UID_LENGTH : uid_len;
+
+  if (uid != NULL && event.uid_len > 0U)
+  {
+    memcpy(event.uid, uid, event.uid_len);
+  }
+
+  return osMessageQueuePut(DoorEventQueueHandle, &event, 0U, 0U);
 }
 
 static void BeginPinEntry(void)
@@ -265,18 +265,12 @@ static void HandleKeypadKey(char key)
   switch (key)
   {
     case KEYPAD_KEY_UNLOCK:
-      //验证密码然后开锁
       if (pin_entry_active)
       {
         bool authorized = AccessConfig_IsPinAuthorized(DoorUI_GetPin(&door_ui));
 
         pin_entry_active = false;
-        DoorEvent event = {0};
-        event.type = DOOR_EVENT_PIN_RESULT;
-        event.authorized = authorized;
-        event.uid_len = 0U;
-
-        osMessageQueuePut(DoorEventQueueHandle, &event, 0U, 0U);
+        (void)DoorEvent_Send(DOOR_EVENT_PIN_RESULT, authorized, NULL, 0U);
       }
       else
       {
@@ -284,7 +278,6 @@ static void HandleKeypadKey(char key)
       }
       break;
     case KEYPAD_KEY_BACK:
-      //返回
       if (pin_entry_active)
       {
         pin_entry_active = false;
@@ -292,13 +285,10 @@ static void HandleKeypadKey(char key)
       }
       break;
     case KEYPAD_KEY_ADMIN:
-      //输入录入nfc卡片
       break;
     case KEYPAD_KEY_CHANGE:
-      //修改密码
       break;
     case KEYPAD_KEY_CONFIRM:
-      //确定
       break;
     case KEYPAD_KEY_DELETE:
       if (pin_entry_active)
@@ -354,7 +344,9 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  /* PN532 startup is done inside StartDefaultTask after the scheduler starts. */
+  AccessControl_Init(&access_control);
+  printf("[AUTH] Loaded %lu authorized card(s)\r\n",
+         (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -673,11 +665,7 @@ void StartPasswordTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   (void)argument;
-  printf("\r\nDoorTask start\r\n");
-  // 初始化 AccessControl
-  AccessControl_Init(&access_control);
-  printf("[AUTH] Loaded %lu authorized card(s)\r\n",
-       (unsigned long)AccessConfig_LoadAuthorizedCards(&access_control));
+  printf("\r\nPassword Task start\r\n");
 
   Keypad_Init(&keypad);
   DoorHardware_Init();
@@ -697,14 +685,10 @@ void StartPasswordTask(void *argument)
   {
     printf("OLED not found\r\n");
   }
-  for (;;) {
-    // 扫描键盘
-    char key = Keypad_GetKey(&keypad);
-    HandleKeypadKey(key);
-    // 处理 PIN
-    // 接收 NfcTask 发来的 UID
-    // 统一处理认证结果
-    osDelay(10);
+  for (;;)
+  {
+    HandleKeypadKey(Keypad_GetKey(&keypad));
+    osDelay(10U);
   }
   /* USER CODE END 5 */
 }
@@ -719,10 +703,63 @@ void StartPasswordTask(void *argument)
 void StartNfcTask(void *argument)
 {
   /* USER CODE BEGIN StartNfcTask */
-  /* Infinite loop */
-  for(;;)
+  (void)argument;
+
+  uint8_t last_uid[PN532_MAX_UID_LENGTH] = {0};
+  uint8_t last_uid_len = 0U;
+  bool card_present = false;
+
+  printf("NFC Task start\r\n");
+  if (PN532_Init(&hpn532, &hi2c1, PN532_DEFAULT_I2C_ADDRESS) != HAL_OK)
   {
-    osDelay(1);
+    printf("[NFC] PN532 not found\r\n");
+    for (;;)
+    {
+      osDelay(1000U);
+    }
+  }
+
+  if (PN532_SAMConfig(&hpn532) != HAL_OK)
+  {
+    printf("[NFC] SAM config failed\r\n");
+    for (;;)
+    {
+      osDelay(1000U);
+    }
+  }
+
+  printf("[NFC] PN532 ready\r\n");
+
+  for (;;)
+  {
+    uint8_t uid[PN532_MAX_UID_LENGTH] = {0};
+    uint8_t uid_len = sizeof(uid);
+
+    if (PN532_ReadCardUID(&hpn532, uid, &uid_len) != HAL_OK)
+    {
+      card_present = false;
+      last_uid_len = 0U;
+      osDelay(100U);
+      continue;
+    }
+
+    bool same_card = card_present &&
+                     uid_len == last_uid_len &&
+                     memcmp(uid, last_uid, uid_len) == 0;
+
+    if (!same_card)
+    {
+      bool authorized = AccessControl_IsAuthorized(&access_control, uid, uid_len);
+
+      memcpy(last_uid, uid, uid_len);
+      last_uid_len = uid_len;
+      card_present = true;
+
+      printf("[NFC] Card detected, authorized=%u\r\n", authorized ? 1U : 0U);
+      (void)DoorEvent_Send(DOOR_EVENT_NFC_RESULT, authorized, uid, uid_len);
+    }
+
+    osDelay(200U);
   }
   /* USER CODE END StartNfcTask */
 }
@@ -737,10 +774,11 @@ void StartNfcTask(void *argument)
 void StartEsp32Task(void *argument)
 {
   /* USER CODE BEGIN StartEsp32Task */
-  /* Infinite loop */
-  for(;;)
+  (void)argument;
+
+  for (;;)
   {
-    osDelay(1);
+    osDelay(1000U);
   }
   /* USER CODE END StartEsp32Task */
 }
@@ -761,27 +799,10 @@ void StartCtrlTask(void *argument)
 
   for (;;)
   {
-    if (osMessageQueueGet(DoorEventQueueHandle, &event, NULL, osWaitForever) == osOK)
+    if (osMessageQueueGet(DoorEventQueueHandle, &event, NULL, osWaitForever) == osOK &&
+        (event.type == DOOR_EVENT_PIN_RESULT || event.type == DOOR_EVENT_NFC_RESULT))
     {
-      switch (event.type)
-      {
-        case DOOR_EVENT_PIN_RESULT:
-          HandleAuthResult(ESP32_LINK_AUTH_METHOD_PIN,
-                           event.authorized,
-                           NULL,
-                           0U);
-          break;
-
-        case DOOR_EVENT_NFC_RESULT:
-          HandleAuthResult(ESP32_LINK_AUTH_METHOD_NFC,
-                           event.authorized,
-                           event.uid,
-                           event.uid_len);
-          break;
-
-        default:
-          break;
-      }
+      HandleAuthResult(event.authorized);
     }
   }
   /* USER CODE END StartCtrlTask */

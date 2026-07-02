@@ -10,8 +10,7 @@ extern "C" {
 #define PN532_DEFAULT_I2C_ADDRESS (0x24U << 1)
 #define PN532_MAX_UID_LENGTH 10U
 
-typedef struct
-{
+typedef struct {
   I2C_HandleTypeDef *hi2c;
   uint16_t address;
 } PN532_HandleTypeDef;

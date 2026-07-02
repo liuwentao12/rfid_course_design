@@ -2,9 +2,14 @@
 
 #include <string.h>
 
+static bool DoorUI_IsReady(const DoorUI_HandleTypeDef *ui)
+{
+  return ui != NULL && ui->display != NULL;
+}
+
 static void DoorUI_Refresh(DoorUI_HandleTypeDef *ui)
 {
-  if (ui != NULL && ui->display != NULL)
+  if (DoorUI_IsReady(ui))
   {
     (void)SSD1306_UpdateScreen(ui->display);
   }
@@ -18,16 +23,17 @@ static void DoorUI_DrawHeader(DoorUI_HandleTypeDef *ui, const char *title)
 
 static void DoorUI_DrawPin(DoorUI_HandleTypeDef *ui)
 {
-  char masked_pin[DOOR_UI_MAX_PIN_LENGTH + 1U];
+  char masked_pin[DOOR_UI_MAX_PIN_LENGTH + 1U] = {0};
 
-  memset(masked_pin, 0, sizeof(masked_pin));
-  for (uint8_t i = 0U; i < ui->pin_length; i++)
+  if (!DoorUI_IsReady(ui))
   {
-    /*
-     * 手机密码框的效果：
-     * 最后输入的数字可见，之前输入的数字全部显示为星号。
-     */
-    masked_pin[i] = (i == (uint8_t)(ui->pin_length - 1U)) ? ui->pin[i] : '*';
+    return;
+  }
+
+  memset(masked_pin, '*', ui->pin_length);
+  if (ui->pin_length > 0U)
+  {
+    masked_pin[ui->pin_length - 1U] = ui->pin[ui->pin_length - 1U];
   }
 
   SSD1306_Clear(ui->display);
@@ -39,18 +45,16 @@ static void DoorUI_DrawPin(DoorUI_HandleTypeDef *ui)
 
 void DoorUI_Init(DoorUI_HandleTypeDef *ui, SSD1306_HandleTypeDef *display)
 {
-  if (ui == NULL)
+  if (ui != NULL)
   {
-    return;
+    memset(ui, 0, sizeof(*ui));
+    ui->display = display;
   }
-
-  memset(ui, 0, sizeof(*ui));
-  ui->display = display;
 }
 
 void DoorUI_ShowBootAnimation(DoorUI_HandleTypeDef *ui)
 {
-  if (ui == NULL || ui->display == NULL)
+  if (!DoorUI_IsReady(ui))
   {
     return;
   }
@@ -68,7 +72,7 @@ void DoorUI_ShowBootAnimation(DoorUI_HandleTypeDef *ui)
 
 void DoorUI_ShowIdle(DoorUI_HandleTypeDef *ui)
 {
-  if (ui == NULL || ui->display == NULL)
+  if (!DoorUI_IsReady(ui))
   {
     return;
   }
@@ -82,7 +86,7 @@ void DoorUI_ShowIdle(DoorUI_HandleTypeDef *ui)
 
 void DoorUI_ShowAccessResult(DoorUI_HandleTypeDef *ui, bool authorized)
 {
-  if (ui == NULL || ui->display == NULL)
+  if (!DoorUI_IsReady(ui))
   {
     return;
   }
@@ -90,19 +94,14 @@ void DoorUI_ShowAccessResult(DoorUI_HandleTypeDef *ui, bool authorized)
   SSD1306_Clear(ui->display);
   DoorUI_DrawHeader(ui, authorized ? "ACCESS OK" : "ACCESS DENIED");
 
-  if (authorized)
+  for (uint8_t i = 0U; i < (authorized ? 6U : 12U); i++)
   {
-    /* 一个简单的对勾。 */
-    for (uint8_t i = 0U; i < 6U; i++)
+    if (authorized)
     {
       SSD1306_DrawPixel(ui->display, (uint8_t)(48U + i), (uint8_t)(22U + i), true);
       SSD1306_DrawPixel(ui->display, (uint8_t)(53U + i), (uint8_t)(27U - i), true);
     }
-  }
-  else
-  {
-    /* 一个简单的叉号。 */
-    for (uint8_t i = 0U; i < 12U; i++)
+    else
     {
       SSD1306_DrawPixel(ui->display, (uint8_t)(58U + i), (uint8_t)(16U + i), true);
       SSD1306_DrawPixel(ui->display, (uint8_t)(69U - i), (uint8_t)(16U + i), true);
@@ -112,7 +111,6 @@ void DoorUI_ShowAccessResult(DoorUI_HandleTypeDef *ui, bool authorized)
   DoorUI_Refresh(ui);
 }
 
-//  清空密码，开始输入
 void DoorUI_BeginPinEntry(DoorUI_HandleTypeDef *ui)
 {
   if (ui == NULL)
@@ -125,7 +123,6 @@ void DoorUI_BeginPinEntry(DoorUI_HandleTypeDef *ui)
   DoorUI_DrawPin(ui);
 }
 
-//DoorUI_EnterPinDigit()
 bool DoorUI_EnterPinDigit(DoorUI_HandleTypeDef *ui, char digit)
 {
   if (ui == NULL || digit < '0' || digit > '9' || ui->pin_length >= DOOR_UI_MAX_PIN_LENGTH)
@@ -133,15 +130,12 @@ bool DoorUI_EnterPinDigit(DoorUI_HandleTypeDef *ui, char digit)
     return false;
   }
 
-  ui->pin[ui->pin_length] = digit;
-  ui->pin_length++;
+  ui->pin[ui->pin_length++] = digit;
   ui->pin[ui->pin_length] = '\0';
   DoorUI_DrawPin(ui);
-
   return true;
 }
 
-//  删除最后一个数字
 bool DoorUI_BackspacePin(DoorUI_HandleTypeDef *ui)
 {
   if (ui == NULL || ui->pin_length == 0U)
@@ -149,20 +143,16 @@ bool DoorUI_BackspacePin(DoorUI_HandleTypeDef *ui)
     return false;
   }
 
-  ui->pin_length--;
-  ui->pin[ui->pin_length] = '\0';
+  ui->pin[--ui->pin_length] = '\0';
   DoorUI_DrawPin(ui);
-
   return true;
 }
 
-//  获取当前密码字符串
 const char *DoorUI_GetPin(const DoorUI_HandleTypeDef *ui)
 {
   return ui == NULL ? "" : ui->pin;
 }
 
-//获取当前密码长度
 uint8_t DoorUI_GetPinLength(const DoorUI_HandleTypeDef *ui)
 {
   return ui == NULL ? 0U : ui->pin_length;
