@@ -86,10 +86,7 @@ AccessControl_Status AccessControl_RemoveCard(AccessControl *control, const uint
   return ACCESS_CONTROL_OK;
 }
 
-AccessControl_Status AccessControl_SetCardEnabled(AccessControl *control,
-                                                  const uint8_t *uid,
-                                                  uint8_t uid_length,
-                                                  bool enabled)
+AccessControl_Status AccessControl_SetCardEnabled(AccessControl *control, const uint8_t *uid, uint8_t uid_length, bool enabled)
 {
   if (control == NULL || uid == NULL)
   {

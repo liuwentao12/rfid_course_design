@@ -34,13 +34,7 @@ uint16_t SmartLockProtocol_Crc16(const uint8_t *data, size_t length)
   return crc;
 }
 
-SmartLockProtocol_Status SmartLockProtocol_BuildFrame(uint8_t type,
-                                                      uint8_t sequence,
-                                                      const uint8_t *payload,
-                                                      uint16_t payload_length,
-                                                      uint8_t *output,
-                                                      size_t output_capacity,
-                                                      size_t *output_length)
+SmartLockProtocol_Status SmartLockProtocol_BuildFrame(uint8_t type, uint8_t sequence, const uint8_t *payload, uint16_t payload_length, uint8_t *output, size_t output_capacity, size_t *output_length)
 {
   size_t frame_length;
   uint16_t crc;
@@ -103,9 +97,7 @@ void SmartLockProtocol_DecoderInit(SmartLockProtocol_Decoder *decoder)
   SmartLockProtocol_DecoderReset(decoder);
 }
 
-SmartLockProtocol_Status SmartLockProtocol_DecodeByte(SmartLockProtocol_Decoder *decoder,
-                                                      uint8_t byte,
-                                                      SmartLockProtocol_Frame *output_frame)
+SmartLockProtocol_Status SmartLockProtocol_DecodeByte(SmartLockProtocol_Decoder *decoder, uint8_t byte, SmartLockProtocol_Frame *output_frame)
 {
   if (decoder == NULL || output_frame == NULL)
   {

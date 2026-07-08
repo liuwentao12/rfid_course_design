@@ -40,10 +40,7 @@ static void I2CBus_Unlock(bool locked)
   }
 }
 
-HAL_StatusTypeDef I2CBus_IsDeviceReady(I2C_HandleTypeDef *hi2c,
-                                       uint16_t address,
-                                       uint32_t trials,
-                                       uint32_t timeout)
+HAL_StatusTypeDef I2CBus_IsDeviceReady(I2C_HandleTypeDef *hi2c, uint16_t address, uint32_t trials, uint32_t timeout)
 {
   bool locked;
   HAL_StatusTypeDef status = I2CBus_Lock(&locked);
@@ -57,11 +54,7 @@ HAL_StatusTypeDef I2CBus_IsDeviceReady(I2C_HandleTypeDef *hi2c,
   return status;
 }
 
-HAL_StatusTypeDef I2CBus_MasterTransmit(I2C_HandleTypeDef *hi2c,
-                                        uint16_t address,
-                                        const uint8_t *data,
-                                        uint16_t size,
-                                        uint32_t timeout)
+HAL_StatusTypeDef I2CBus_MasterTransmit(I2C_HandleTypeDef *hi2c, uint16_t address, const uint8_t *data, uint16_t size, uint32_t timeout)
 {
   bool locked;
   HAL_StatusTypeDef status = I2CBus_Lock(&locked);
@@ -75,11 +68,7 @@ HAL_StatusTypeDef I2CBus_MasterTransmit(I2C_HandleTypeDef *hi2c,
   return status;
 }
 
-HAL_StatusTypeDef I2CBus_MasterReceive(I2C_HandleTypeDef *hi2c,
-                                       uint16_t address,
-                                       uint8_t *data,
-                                       uint16_t size,
-                                       uint32_t timeout)
+HAL_StatusTypeDef I2CBus_MasterReceive(I2C_HandleTypeDef *hi2c, uint16_t address, uint8_t *data, uint16_t size, uint32_t timeout)
 {
   bool locked;
   HAL_StatusTypeDef status = I2CBus_Lock(&locked);

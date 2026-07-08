@@ -85,9 +85,7 @@ static HAL_StatusTypeDef SSD1306_WriteCommand(SSD1306_HandleTypeDef *display, ui
                                100U);
 }
 
-static HAL_StatusTypeDef SSD1306_WriteCommands(SSD1306_HandleTypeDef *display,
-                                               const uint8_t *commands,
-                                               size_t command_count)
+static HAL_StatusTypeDef SSD1306_WriteCommands(SSD1306_HandleTypeDef *display, const uint8_t *commands, size_t command_count)
 {
   for (size_t i = 0U; i < command_count; i++)
   {
@@ -100,9 +98,7 @@ static HAL_StatusTypeDef SSD1306_WriteCommands(SSD1306_HandleTypeDef *display,
   return HAL_OK;
 }
 
-HAL_StatusTypeDef SSD1306_Init(SSD1306_HandleTypeDef *display,
-                               I2C_HandleTypeDef *hi2c,
-                               uint16_t address)
+HAL_StatusTypeDef SSD1306_Init(SSD1306_HandleTypeDef *display, I2C_HandleTypeDef *hi2c, uint16_t address)
 {
   static const uint8_t init_commands[] = {
     0xAEU,
@@ -166,11 +162,7 @@ HAL_StatusTypeDef SSD1306_UpdateScreen(SSD1306_HandleTypeDef *display)
     }
 
     memcpy(&packet[1], &display->buffer[page * SSD1306_WIDTH], SSD1306_WIDTH);
-    if (I2CBus_MasterTransmit(display->hi2c,
-                              display->address,
-                              packet,
-                              sizeof(packet),
-                              200U) != HAL_OK)
+    if (I2CBus_MasterTransmit(display->hi2c, display->address, packet, sizeof(packet), 200U) != HAL_OK)
     {
       return HAL_ERROR;
     }
@@ -210,12 +202,7 @@ void SSD1306_DrawPixel(SSD1306_HandleTypeDef *display, uint8_t x, uint8_t y, boo
   }
 }
 
-void SSD1306_DrawRect(SSD1306_HandleTypeDef *display,
-                      uint8_t x,
-                      uint8_t y,
-                      uint8_t width,
-                      uint8_t height,
-                      bool on)
+void SSD1306_DrawRect(SSD1306_HandleTypeDef *display, uint8_t x, uint8_t y, uint8_t width, uint8_t height, bool on)
 {
   if (width == 0U || height == 0U)
   {
@@ -235,12 +222,7 @@ void SSD1306_DrawRect(SSD1306_HandleTypeDef *display,
   }
 }
 
-void SSD1306_FillRect(SSD1306_HandleTypeDef *display,
-                      uint8_t x,
-                      uint8_t y,
-                      uint8_t width,
-                      uint8_t height,
-                      bool on)
+void SSD1306_FillRect(SSD1306_HandleTypeDef *display, uint8_t x, uint8_t y, uint8_t width, uint8_t height, bool on)
 {
   for (uint8_t row = 0U; row < height; row++)
   {
@@ -251,11 +233,7 @@ void SSD1306_FillRect(SSD1306_HandleTypeDef *display,
   }
 }
 
-static void SSD1306_WriteChar(SSD1306_HandleTypeDef *display,
-                              uint8_t x,
-                              uint8_t y,
-                              char character,
-                              bool on)
+static void SSD1306_WriteChar(SSD1306_HandleTypeDef *display, uint8_t x, uint8_t y, char character, bool on)
 {
   uint8_t code = (uint8_t)character;
 
@@ -280,11 +258,7 @@ static void SSD1306_WriteChar(SSD1306_HandleTypeDef *display,
   }
 }
 
-void SSD1306_WriteString(SSD1306_HandleTypeDef *display,
-                         uint8_t x,
-                         uint8_t y,
-                         const char *text,
-                         bool on)
+void SSD1306_WriteString(SSD1306_HandleTypeDef *display, uint8_t x, uint8_t y, const char *text, bool on)
 {
   if (display == NULL || text == NULL)
   {

@@ -18,10 +18,7 @@ static void ESP32Link_PutU32Le(uint8_t *output, uint32_t value)
   output[3] = (uint8_t)((value >> 24U) & 0xFFU);
 }
 
-static ESP32Link_Status ESP32Link_QueueFrame(ESP32Link_HandleTypeDef *link,
-                                             uint8_t type,
-                                             const uint8_t *payload,
-                                             uint16_t payload_length)
+static ESP32Link_Status ESP32Link_QueueFrame(ESP32Link_HandleTypeDef *link, uint8_t type, const uint8_t *payload, uint16_t payload_length)
 {
   ESP32Link_TxFrame *frame;
   size_t encoded_length = 0U;
@@ -60,11 +57,7 @@ static ESP32Link_Status ESP32Link_QueueFrame(ESP32Link_HandleTypeDef *link,
   return ESP32_LINK_OK;
 }
 
-static void ESP32Link_SendImmediate(ESP32Link_HandleTypeDef *link,
-                                    uint8_t type,
-                                    uint8_t sequence,
-                                    const uint8_t *payload,
-                                    uint16_t payload_length)
+static void ESP32Link_SendImmediate(ESP32Link_HandleTypeDef *link, uint8_t type, uint8_t sequence, const uint8_t *payload, uint16_t payload_length)
 {
   uint8_t bytes[SMART_LOCK_PROTOCOL_MAX_FRAME_LENGTH];
   size_t length = 0U;
@@ -278,12 +271,7 @@ ESP32Link_Status ESP32Link_QueueStatusQuery(ESP32Link_HandleTypeDef *link)
   return ESP32Link_QueueFrame(link, SMART_LOCK_MSG_STATUS_QUERY, NULL, 0U);
 }
 
-ESP32Link_Status ESP32Link_QueueAuthEvent(ESP32Link_HandleTypeDef *link,
-                                          ESP32Link_AuthMethod method,
-                                          ESP32Link_AuthResult result,
-                                          uint8_t failure_count,
-                                          const uint8_t *uid,
-                                          uint8_t uid_length)
+ESP32Link_Status ESP32Link_QueueAuthEvent(ESP32Link_HandleTypeDef *link, ESP32Link_AuthMethod method, ESP32Link_AuthResult result, uint8_t failure_count, const uint8_t *uid, uint8_t uid_length)
 {
   uint8_t payload[8U + ESP32_LINK_MAX_UID_LENGTH];
 
@@ -309,11 +297,7 @@ ESP32Link_Status ESP32Link_QueueAuthEvent(ESP32Link_HandleTypeDef *link,
                               (uint16_t)(8U + uid_length));
 }
 
-ESP32Link_Status ESP32Link_QueueCaptureAlert(ESP32Link_HandleTypeDef *link,
-                                             ESP32Link_AlertReason reason,
-                                             uint8_t failure_count,
-                                             const uint8_t *uid,
-                                             uint8_t uid_length)
+ESP32Link_Status ESP32Link_QueueCaptureAlert(ESP32Link_HandleTypeDef *link, ESP32Link_AlertReason reason, uint8_t failure_count, const uint8_t *uid, uint8_t uid_length)
 {
   uint8_t payload[8U + ESP32_LINK_MAX_UID_LENGTH];
 

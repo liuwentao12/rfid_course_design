@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+﻿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -221,10 +221,7 @@ static void HandleAuthResult(bool authorized)
   ShowAccessResult(authorized);
 }
 
-static osStatus_t DoorEvent_Send(DoorEventType type,
-                                 bool authorized,
-                                 const uint8_t *uid,
-                                 uint8_t uid_len)
+static osStatus_t DoorEvent_Send(DoorEventType type, bool authorized, const uint8_t *uid, uint8_t uid_len)
 {
   DoorEvent event = {0};
 

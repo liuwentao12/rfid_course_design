@@ -70,17 +70,9 @@ typedef struct {
 } SmartLockProtocol_Decoder;
 
 uint16_t SmartLockProtocol_Crc16(const uint8_t *data, size_t length);
-SmartLockProtocol_Status SmartLockProtocol_BuildFrame(uint8_t type,
-                                                      uint8_t sequence,
-                                                      const uint8_t *payload,
-                                                      uint16_t payload_length,
-                                                      uint8_t *output,
-                                                      size_t output_capacity,
-                                                      size_t *output_length);
+SmartLockProtocol_Status SmartLockProtocol_BuildFrame(uint8_t type, uint8_t sequence, const uint8_t *payload, uint16_t payload_length, uint8_t *output, size_t output_capacity, size_t *output_length);
 void SmartLockProtocol_DecoderInit(SmartLockProtocol_Decoder *decoder);
-SmartLockProtocol_Status SmartLockProtocol_DecodeByte(SmartLockProtocol_Decoder *decoder,
-                                                      uint8_t byte,
-                                                      SmartLockProtocol_Frame *output_frame);
+SmartLockProtocol_Status SmartLockProtocol_DecodeByte(SmartLockProtocol_Decoder *decoder, uint8_t byte, SmartLockProtocol_Frame *output_frame);
 
 #ifdef __cplusplus
 }

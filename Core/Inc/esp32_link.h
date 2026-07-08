@@ -66,17 +66,8 @@ void ESP32Link_Init(ESP32Link_HandleTypeDef *link, UART_HandleTypeDef *uart);
 void ESP32Link_Poll(ESP32Link_HandleTypeDef *link);
 ESP32Link_Status ESP32Link_QueueHello(ESP32Link_HandleTypeDef *link);
 ESP32Link_Status ESP32Link_QueueStatusQuery(ESP32Link_HandleTypeDef *link);
-ESP32Link_Status ESP32Link_QueueAuthEvent(ESP32Link_HandleTypeDef *link,
-                                          ESP32Link_AuthMethod method,
-                                          ESP32Link_AuthResult result,
-                                          uint8_t failure_count,
-                                          const uint8_t *uid,
-                                          uint8_t uid_length);
-ESP32Link_Status ESP32Link_QueueCaptureAlert(ESP32Link_HandleTypeDef *link,
-                                             ESP32Link_AlertReason reason,
-                                             uint8_t failure_count,
-                                             const uint8_t *uid,
-                                             uint8_t uid_length);
+ESP32Link_Status ESP32Link_QueueAuthEvent(ESP32Link_HandleTypeDef *link, ESP32Link_AuthMethod method, ESP32Link_AuthResult result, uint8_t failure_count, const uint8_t *uid, uint8_t uid_length);
+ESP32Link_Status ESP32Link_QueueCaptureAlert(ESP32Link_HandleTypeDef *link, ESP32Link_AlertReason reason, uint8_t failure_count, const uint8_t *uid, uint8_t uid_length);
 bool ESP32Link_IsRemoteOnline(const ESP32Link_HandleTypeDef *link);
 
 #ifdef __cplusplus

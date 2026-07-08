@@ -31,10 +31,7 @@ static HAL_StatusTypeDef PN532_WaitReady(PN532_HandleTypeDef *device, uint32_t t
   return HAL_TIMEOUT;
 }
 
-static HAL_StatusTypeDef PN532_WriteCommand(PN532_HandleTypeDef *device,
-                                            uint8_t command,
-                                            const uint8_t *params,
-                                            uint8_t params_len)
+static HAL_StatusTypeDef PN532_WriteCommand(PN532_HandleTypeDef *device, uint8_t command, const uint8_t *params, uint8_t params_len)
 {
   uint8_t frame[PN532_FRAME_MAX_LENGTH];
   uint8_t data_len = params_len + 2U;
@@ -90,11 +87,7 @@ static HAL_StatusTypeDef PN532_ReadAck(PN532_HandleTypeDef *device)
   return HAL_OK;
 }
 
-static HAL_StatusTypeDef PN532_ReadResponse(PN532_HandleTypeDef *device,
-                                            uint8_t command,
-                                            uint8_t *data,
-                                            uint8_t *data_len,
-                                            uint32_t timeout)
+static HAL_StatusTypeDef PN532_ReadResponse(PN532_HandleTypeDef *device, uint8_t command, uint8_t *data, uint8_t *data_len, uint32_t timeout)
 {
   uint8_t response[PN532_FRAME_MAX_LENGTH];
   uint8_t payload_len;
@@ -135,13 +128,7 @@ static HAL_StatusTypeDef PN532_ReadResponse(PN532_HandleTypeDef *device,
   return HAL_OK;
 }
 
-static HAL_StatusTypeDef PN532_SendCommandAndRead(PN532_HandleTypeDef *device,
-                                                  uint8_t command,
-                                                  const uint8_t *params,
-                                                  uint8_t params_len,
-                                                  uint8_t *data,
-                                                  uint8_t *data_len,
-                                                  uint32_t timeout)
+static HAL_StatusTypeDef PN532_SendCommandAndRead(PN532_HandleTypeDef *device, uint8_t command, const uint8_t *params, uint8_t params_len, uint8_t *data, uint8_t *data_len, uint32_t timeout)
 {
   if (PN532_WriteCommand(device, command, params, params_len) != HAL_OK)
   {
@@ -179,13 +166,7 @@ HAL_StatusTypeDef PN532_GetFirmwareVersion(PN532_HandleTypeDef *device, uint32_t
     return HAL_ERROR;
   }
 
-  if (PN532_SendCommandAndRead(device,
-                               PN532_COMMAND_GET_FIRMWARE_VERSION,
-                               NULL,
-                               0U,
-                               data,
-                               &data_len,
-                               1000U) != HAL_OK ||
+  if (PN532_SendCommandAndRead(device, PN532_COMMAND_GET_FIRMWARE_VERSION, NULL, 0U, data, &data_len, 1000U) != HAL_OK ||
       data_len < sizeof(data))
   {
     return HAL_ERROR;
@@ -210,13 +191,7 @@ HAL_StatusTypeDef PN532_SAMConfig(PN532_HandleTypeDef *device)
     return HAL_ERROR;
   }
 
-  return PN532_SendCommandAndRead(device,
-                                  PN532_COMMAND_SAM_CONFIGURATION,
-                                  params,
-                                  sizeof(params),
-                                  data,
-                                  &data_len,
-                                  1000U);
+  return PN532_SendCommandAndRead(device, PN532_COMMAND_SAM_CONFIGURATION, params, sizeof(params), data, &data_len, 1000U);
 }
 
 HAL_StatusTypeDef PN532_ReadCardUID(PN532_HandleTypeDef *device, uint8_t *uid, uint8_t *uid_len)
@@ -231,13 +206,7 @@ HAL_StatusTypeDef PN532_ReadCardUID(PN532_HandleTypeDef *device, uint8_t *uid, u
     return HAL_ERROR;
   }
 
-  if (PN532_SendCommandAndRead(device,
-                               PN532_COMMAND_IN_LIST_PASSIVE_TARGET,
-                               params,
-                               sizeof(params),
-                               data,
-                               &data_len,
-                               1000U) != HAL_OK)
+  if (PN532_SendCommandAndRead(device, PN532_COMMAND_IN_LIST_PASSIVE_TARGET, params, sizeof(params), data, &data_len, 1000U) != HAL_OK)
   {
     return HAL_ERROR;
   }
