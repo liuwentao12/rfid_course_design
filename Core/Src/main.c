@@ -44,6 +44,15 @@ typedef enum {
   DOOR_EVENT_NFC_RESULT,
 } DoorEventType;
 
+typedef enum {
+  PIN_MODE_NONE = 0,
+  PIN_MODE_UNLOCK,
+  PIN_MODE_ADMIN_AUTH,
+  PIN_MODE_CHANGE_OLD,
+  PIN_MODE_CHANGE_NEW,
+  PIN_MODE_CHANGE_CONFIRM
+} PinEntryMode;
+
 typedef struct {
   DoorEventType type;
   bool authorized;
@@ -121,7 +130,9 @@ static osMutexId_t I2cBusMutexHandle;
 static const osMutexAttr_t I2cBusMutex_attributes = {
   .name = "I2cBusMutex"
 };
-static bool pin_entry_active;
+static PinEntryMode pin_entry_mode;
+static bool card_enroll_active;
+static char pending_new_pin[ACCESS_CONFIG_MAX_PIN_LENGTH + 1U];
 static uint8_t consecutive_auth_failures;
 static uint32_t last_capture_alert_tick;
 
@@ -237,11 +248,106 @@ static osStatus_t DoorEvent_Send(DoorEventType type, bool authorized, const uint
   return osMessageQueuePut(DoorEventQueueHandle, &event, 0U, 0U);
 }
 
-static void BeginPinEntry(void)
+static bool PinEntry_IsActive(void)
 {
-  pin_entry_active = true;
-  DoorUI_BeginPinEntry(&door_ui);
-  printf("[PIN] Entry started\r\n");
+  return pin_entry_mode != PIN_MODE_NONE;
+}
+
+static void BeginPinEntry(PinEntryMode mode, const char *title)
+{
+  pin_entry_mode = mode;
+  DoorUI_BeginPinEntryWithTitle(&door_ui, title);
+  printf("[PIN] Entry started: %u\r\n", (unsigned int)mode);
+}
+
+static void EndPinEntry(void)
+{
+  pin_entry_mode = PIN_MODE_NONE;
+  DoorUI_ShowIdle(&door_ui);
+}
+
+static void ShowDeniedMessage(const char *title)
+{
+  pin_entry_mode = PIN_MODE_NONE;
+  DoorUI_ShowMessage(&door_ui, title, "WRONG PIN", NULL);
+  DoorHardware_OnAccessDenied();
+  StatusLed_Denied();
+  osDelay(500U);
+  DoorUI_ShowIdle(&door_ui);
+}
+
+static void SubmitPinEntry(void)
+{
+  const char *pin = DoorUI_GetPin(&door_ui);
+
+  switch (pin_entry_mode)
+  {
+    case PIN_MODE_UNLOCK:
+      pin_entry_mode = PIN_MODE_NONE;
+      (void)DoorEvent_Send(DOOR_EVENT_PIN_RESULT, AccessConfig_IsPinAuthorized(pin), NULL, 0U);
+      break;
+
+    case PIN_MODE_ADMIN_AUTH:
+      if (AccessConfig_IsPinAuthorized(pin))
+      {
+        pin_entry_mode = PIN_MODE_NONE;
+        card_enroll_active = true;
+        DoorUI_ShowMessage(&door_ui, "ADD CARD", "SCAN NEW CARD", "R TO CANCEL");
+        printf("[ADMIN] Card enrollment started\r\n");
+      }
+      else
+      {
+        ShowDeniedMessage("ADMIN PIN");
+      }
+      break;
+
+    case PIN_MODE_CHANGE_OLD:
+      if (AccessConfig_IsPinAuthorized(pin))
+      {
+        BeginPinEntry(PIN_MODE_CHANGE_NEW, "NEW PIN");
+      }
+      else
+      {
+        ShowDeniedMessage("OLD PIN");
+      }
+      break;
+
+    case PIN_MODE_CHANGE_NEW:
+      if (DoorUI_GetPinLength(&door_ui) > 0U)
+      {
+        strncpy(pending_new_pin, pin, sizeof(pending_new_pin) - 1U);
+        pending_new_pin[sizeof(pending_new_pin) - 1U] = '\0';
+        BeginPinEntry(PIN_MODE_CHANGE_CONFIRM, "CONFIRM PIN");
+      }
+      else
+      {
+        DoorUI_ShowMessage(&door_ui, "NEW PIN", "1 TO 8 DIGITS", NULL);
+        osDelay(700U);
+        BeginPinEntry(PIN_MODE_CHANGE_NEW, "NEW PIN");
+      }
+      break;
+
+    case PIN_MODE_CHANGE_CONFIRM:
+      if (strcmp(pin, pending_new_pin) == 0)
+      {
+        (void)AccessConfig_SetPin(pin);
+        pin_entry_mode = PIN_MODE_NONE;
+        DoorUI_ShowMessage(&door_ui, "PIN UPDATED", "PASSWORD SAVED", NULL);
+        printf("[PIN] Password changed\r\n");
+        osDelay(700U);
+        DoorUI_ShowIdle(&door_ui);
+      }
+      else
+      {
+        DoorUI_ShowMessage(&door_ui, "PIN MISMATCH", "TRY AGAIN", NULL);
+        osDelay(700U);
+        BeginPinEntry(PIN_MODE_CHANGE_NEW, "NEW PIN");
+      }
+      break;
+
+    default:
+      break;
+  }
 }
 
 static void HandleKeypadKey(char key)
@@ -253,11 +359,22 @@ static void HandleKeypadKey(char key)
 
   printf("[KEYPAD] Key: %c\r\n", key);
 
+  if (card_enroll_active)
+  {
+    if (key == KEYPAD_KEY_BACK)
+    {
+      card_enroll_active = false;
+      DoorUI_ShowIdle(&door_ui);
+      printf("[ADMIN] Card enrollment canceled\r\n");
+    }
+    return;
+  }
+
   if (key >= '0' && key <= '9')
   {
-    if (!pin_entry_active)
+    if (!PinEntry_IsActive())
     {
-      BeginPinEntry();
+      BeginPinEntry(PIN_MODE_UNLOCK, "ENTER PIN");
     }
 
     (void)DoorUI_EnterPinDigit(&door_ui, key);
@@ -267,33 +384,35 @@ static void HandleKeypadKey(char key)
   switch (key)
   {
     case KEYPAD_KEY_UNLOCK:
-      if (pin_entry_active)
+      if (PinEntry_IsActive())
       {
-        bool authorized = AccessConfig_IsPinAuthorized(DoorUI_GetPin(&door_ui));
-
-        pin_entry_active = false;
-        (void)DoorEvent_Send(DOOR_EVENT_PIN_RESULT, authorized, NULL, 0U);
+        SubmitPinEntry();
       }
       else
       {
-        BeginPinEntry();
+        BeginPinEntry(PIN_MODE_UNLOCK, "ENTER PIN");
       }
       break;
     case KEYPAD_KEY_BACK:
-      if (pin_entry_active)
+      if (PinEntry_IsActive())
       {
-        pin_entry_active = false;
-        DoorUI_ShowIdle(&door_ui);
+        EndPinEntry();
       }
       break;
     case KEYPAD_KEY_ADMIN:
+      BeginPinEntry(PIN_MODE_ADMIN_AUTH, "ADMIN PIN");
       break;
     case KEYPAD_KEY_CHANGE:
+      BeginPinEntry(PIN_MODE_CHANGE_OLD, "OLD PIN");
       break;
     case KEYPAD_KEY_CONFIRM:
+      if (PinEntry_IsActive())
+      {
+        SubmitPinEntry();
+      }
       break;
     case KEYPAD_KEY_DELETE:
-      if (pin_entry_active)
+      if (PinEntry_IsActive())
       {
         (void)DoorUI_BackspacePin(&door_ui);
       }
@@ -625,6 +744,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(BEEF_GPIO_Port, BEEF_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : BOARD_LED_Pin */
   GPIO_InitStruct.Pin = BOARD_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -649,8 +771,9 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = LED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -678,7 +801,9 @@ void StartPasswordTask(void *argument)
   Keypad_Init(&keypad);
   DoorHardware_Init();
 
-  pin_entry_active = false;
+  pin_entry_mode = PIN_MODE_NONE;
+  card_enroll_active = false;
+  memset(pending_new_pin, 0, sizeof(pending_new_pin));
   consecutive_auth_failures = 0U;
   last_capture_alert_tick = 0U;
 
@@ -757,14 +882,38 @@ void StartNfcTask(void *argument)
 
     if (!same_card)
     {
-      bool authorized = AccessControl_IsAuthorized(&access_control, uid, uid_len);
-
       memcpy(last_uid, uid, uid_len);
       last_uid_len = uid_len;
       card_present = true;
 
-      printf("[NFC] Card detected, authorized=%u\r\n", authorized ? 1U : 0U);
-      (void)DoorEvent_Send(DOOR_EVENT_NFC_RESULT, authorized, uid, uid_len);
+      if (card_enroll_active)
+      {
+        AccessControl_Status status = AccessControl_AddCard(&access_control, uid, uid_len);
+
+        card_enroll_active = false;
+        if (status == ACCESS_CONTROL_OK || status == ACCESS_CONTROL_DUPLICATE)
+        {
+          DoorUI_ShowMessage(&door_ui, "CARD SAVED", "CAN OPEN DOOR", NULL);
+          StatusLed_Authorized();
+          printf("[NFC] Card enrolled, count=%lu\r\n",
+                 (unsigned long)AccessControl_GetCardCount(&access_control));
+        }
+        else
+        {
+          DoorUI_ShowMessage(&door_ui, "CARD FAILED", "TRY AGAIN", NULL);
+          DoorHardware_OnAccessDenied();
+          printf("[NFC] Card enroll failed: %u\r\n", (unsigned int)status);
+        }
+        osDelay(700U);
+        DoorUI_ShowIdle(&door_ui);
+      }
+      else
+      {
+        bool authorized = AccessControl_IsAuthorized(&access_control, uid, uid_len);
+
+        printf("[NFC] Card detected, authorized=%u\r\n", authorized ? 1U : 0U);
+        (void)DoorEvent_Send(DOOR_EVENT_NFC_RESULT, authorized, uid, uid_len);
+      }
     }
 
     osDelay(200U);

@@ -9,8 +9,11 @@ extern "C" {
 #include <stddef.h>
 
 #include "access_control.h"
+#define ACCESS_CONFIG_MAX_PIN_LENGTH 8U
+
 
 size_t AccessConfig_LoadAuthorizedCards(AccessControl *control);
+bool AccessConfig_SetPin(const char *pin);
 bool AccessConfig_IsPinAuthorized(const char *pin);
 
 #ifdef __cplusplus

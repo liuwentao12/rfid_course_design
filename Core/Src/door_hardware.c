@@ -11,7 +11,7 @@
 #endif
 
 #ifndef DOOR_LOCK_ACTIVE_STATE
-#define DOOR_LOCK_ACTIVE_STATE GPIO_PIN_SET
+#define DOOR_LOCK_ACTIVE_STATE GPIO_PIN_RESET
 #endif
 
 #ifndef DOOR_UNLOCK_PULSE_MS
@@ -26,6 +26,10 @@
 #define DOOR_HW_HAS_LOCK 1
 #define DOOR_HW_LOCK_PIN LOCK_Pin
 #define DOOR_HW_LOCK_PORT LOCK_GPIO_Port
+#elif defined(LED_Pin) && defined(LED_GPIO_Port)
+#define DOOR_HW_HAS_LOCK 1
+#define DOOR_HW_LOCK_PIN LED_Pin
+#define DOOR_HW_LOCK_PORT LED_GPIO_Port
 #else
 #define DOOR_HW_HAS_LOCK 0
 #endif

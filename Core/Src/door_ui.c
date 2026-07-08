@@ -1,4 +1,4 @@
-#include "door_ui.h"
+﻿#include "door_ui.h"
 
 #include <string.h>
 
@@ -24,11 +24,14 @@ static void DoorUI_DrawHeader(DoorUI_HandleTypeDef *ui, const char *title)
 static void DoorUI_DrawPin(DoorUI_HandleTypeDef *ui)
 {
   char masked_pin[DOOR_UI_MAX_PIN_LENGTH + 1U] = {0};
+  const char *title;
 
   if (!DoorUI_IsReady(ui))
   {
     return;
   }
+
+  title = ui->pin_title[0] == '\0' ? "ENTER PIN" : ui->pin_title;
 
   memset(masked_pin, '*', ui->pin_length);
   if (ui->pin_length > 0U)
@@ -37,7 +40,7 @@ static void DoorUI_DrawPin(DoorUI_HandleTypeDef *ui)
   }
 
   SSD1306_Clear(ui->display);
-  DoorUI_DrawHeader(ui, "ENTER PIN");
+  DoorUI_DrawHeader(ui, title);
   SSD1306_DrawRect(ui->display, 2U, 14U, 124U, 16U, true);
   SSD1306_WriteString(ui->display, 7U, 18U, masked_pin, true);
   DoorUI_Refresh(ui);
@@ -80,7 +83,7 @@ void DoorUI_ShowIdle(DoorUI_HandleTypeDef *ui)
   SSD1306_Clear(ui->display);
   DoorUI_DrawHeader(ui, "DOOR LOCK");
   SSD1306_WriteString(ui->display, 13U, 15U, "SCAN CARD OR PIN", true);
-  SSD1306_WriteString(ui->display, 46U, 24U, "READY", true);
+  SSD1306_WriteString(ui->display, 31U, 24U, "A ADD  M PIN", true);
   DoorUI_Refresh(ui);
 }
 
@@ -111,7 +114,32 @@ void DoorUI_ShowAccessResult(DoorUI_HandleTypeDef *ui, bool authorized)
   DoorUI_Refresh(ui);
 }
 
+void DoorUI_ShowMessage(DoorUI_HandleTypeDef *ui, const char *title, const char *line1, const char *line2)
+{
+  if (!DoorUI_IsReady(ui))
+  {
+    return;
+  }
+
+  SSD1306_Clear(ui->display);
+  DoorUI_DrawHeader(ui, title);
+  if (line1 != NULL)
+  {
+    SSD1306_WriteString(ui->display, 4U, 15U, line1, true);
+  }
+  if (line2 != NULL)
+  {
+    SSD1306_WriteString(ui->display, 4U, 24U, line2, true);
+  }
+  DoorUI_Refresh(ui);
+}
+
 void DoorUI_BeginPinEntry(DoorUI_HandleTypeDef *ui)
+{
+  DoorUI_BeginPinEntryWithTitle(ui, "ENTER PIN");
+}
+
+void DoorUI_BeginPinEntryWithTitle(DoorUI_HandleTypeDef *ui, const char *title)
 {
   if (ui == NULL)
   {
@@ -120,6 +148,11 @@ void DoorUI_BeginPinEntry(DoorUI_HandleTypeDef *ui)
 
   memset(ui->pin, 0, sizeof(ui->pin));
   ui->pin_length = 0U;
+  memset(ui->pin_title, 0, sizeof(ui->pin_title));
+  if (title != NULL)
+  {
+    strncpy(ui->pin_title, title, sizeof(ui->pin_title) - 1U);
+  }
   DoorUI_DrawPin(ui);
 }
 
