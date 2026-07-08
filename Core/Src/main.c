@@ -31,6 +31,7 @@
 #include "access_control.h"
 #include "door_hardware.h"
 #include "door_ui.h"
+#include "i2c_bus.h"
 #include "keypad.h"
 #include "pn532.h"
 #include "ssd1306.h"
@@ -116,6 +117,10 @@ static SSD1306_HandleTypeDef holed;
 static DoorUI_HandleTypeDef door_ui;
 static Keypad_HandleTypeDef keypad;
 static AccessControl access_control;
+static osMutexId_t I2cBusMutexHandle;
+static const osMutexAttr_t I2cBusMutex_attributes = {
+  .name = "I2cBusMutex"
+};
 static bool pin_entry_active;
 static uint8_t consecutive_auth_failures;
 static uint32_t last_capture_alert_tick;
@@ -354,6 +359,12 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+  I2cBusMutexHandle = osMutexNew(&I2cBusMutex_attributes);
+  if (I2cBusMutexHandle == NULL)
+  {
+    Error_Handler();
+  }
+  I2CBus_Init(I2cBusMutexHandle);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */

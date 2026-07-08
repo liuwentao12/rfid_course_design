@@ -50,6 +50,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/smart_lock_protocol.c
     Core/Src/esp32_link.c
     Core/Src/door_hardware.c
+    Core/Src/i2c_bus.c
     Core/Src/ssd1306.c
     Core/Src/door_ui.c
     Core/Src/keypad.c

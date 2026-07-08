@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "i2c_bus.h"
+
 #define SSD1306_CONTROL_COMMAND 0x00U
 #define SSD1306_CONTROL_DATA 0x40U
 #define SSD1306_FONT_FIRST_CHAR 32U
@@ -76,11 +78,11 @@ static HAL_StatusTypeDef SSD1306_WriteCommand(SSD1306_HandleTypeDef *display, ui
 {
   uint8_t packet[] = {SSD1306_CONTROL_COMMAND, command};
 
-  return HAL_I2C_Master_Transmit(display->hi2c,
-                                 display->address,
-                                 packet,
-                                 sizeof(packet),
-                                 100U);
+  return I2CBus_MasterTransmit(display->hi2c,
+                               display->address,
+                               packet,
+                               sizeof(packet),
+                               100U);
 }
 
 static HAL_StatusTypeDef SSD1306_WriteCommands(SSD1306_HandleTypeDef *display,
@@ -129,7 +131,7 @@ HAL_StatusTypeDef SSD1306_Init(SSD1306_HandleTypeDef *display,
   display->hi2c = hi2c;
   display->address = address;
 
-  if (HAL_I2C_IsDeviceReady(hi2c, address, 2U, 20U) != HAL_OK)
+  if (I2CBus_IsDeviceReady(hi2c, address, 2U, 20U) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -164,11 +166,11 @@ HAL_StatusTypeDef SSD1306_UpdateScreen(SSD1306_HandleTypeDef *display)
     }
 
     memcpy(&packet[1], &display->buffer[page * SSD1306_WIDTH], SSD1306_WIDTH);
-    if (HAL_I2C_Master_Transmit(display->hi2c,
-                                display->address,
-                                packet,
-                                sizeof(packet),
-                                200U) != HAL_OK)
+    if (I2CBus_MasterTransmit(display->hi2c,
+                              display->address,
+                              packet,
+                              sizeof(packet),
+                              200U) != HAL_OK)
     {
       return HAL_ERROR;
     }

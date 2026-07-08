@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "i2c_bus.h"
+
 #define PN532_HOST_TO_PN532 0xD4U
 #define PN532_PN532_TO_HOST 0xD5U
 #define PN532_STATUS_READY 0x01U
@@ -17,7 +19,7 @@ static HAL_StatusTypeDef PN532_WaitReady(PN532_HandleTypeDef *device, uint32_t t
 
   while ((HAL_GetTick() - start) < timeout)
   {
-    if (HAL_I2C_Master_Receive(device->hi2c, device->address, &status, 1U, 20U) == HAL_OK &&
+    if (I2CBus_MasterReceive(device->hi2c, device->address, &status, 1U, 20U) == HAL_OK &&
         status == PN532_STATUS_READY)
     {
       return HAL_OK;
@@ -62,7 +64,7 @@ static HAL_StatusTypeDef PN532_WriteCommand(PN532_HandleTypeDef *device,
   frame[frame_len++] = (uint8_t)(0x100U - checksum);
   frame[frame_len++] = 0x00U;
 
-  return HAL_I2C_Master_Transmit(device->hi2c, device->address, frame, frame_len, 100U);
+  return I2CBus_MasterTransmit(device->hi2c, device->address, frame, frame_len, 100U);
 }
 
 static HAL_StatusTypeDef PN532_ReadAck(PN532_HandleTypeDef *device)
@@ -75,7 +77,7 @@ static HAL_StatusTypeDef PN532_ReadAck(PN532_HandleTypeDef *device)
     return HAL_TIMEOUT;
   }
 
-  if (HAL_I2C_Master_Receive(device->hi2c, device->address, ack, sizeof(ack), 100U) != HAL_OK)
+  if (I2CBus_MasterReceive(device->hi2c, device->address, ack, sizeof(ack), 100U) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -107,7 +109,7 @@ static HAL_StatusTypeDef PN532_ReadResponse(PN532_HandleTypeDef *device,
     return HAL_TIMEOUT;
   }
 
-  if (HAL_I2C_Master_Receive(device->hi2c, device->address, response, sizeof(response), 200U) != HAL_OK)
+  if (I2CBus_MasterReceive(device->hi2c, device->address, response, sizeof(response), 200U) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -164,7 +166,7 @@ HAL_StatusTypeDef PN532_Init(PN532_HandleTypeDef *device, I2C_HandleTypeDef *hi2
   device->hi2c = hi2c;
   device->address = address;
 
-  return HAL_I2C_IsDeviceReady(device->hi2c, device->address, 2U, 20U);
+  return I2CBus_IsDeviceReady(device->hi2c, device->address, 2U, 20U);
 }
 
 HAL_StatusTypeDef PN532_GetFirmwareVersion(PN532_HandleTypeDef *device, uint32_t *version)
