@@ -101,13 +101,6 @@ const osThreadAttr_t NfcTask_attributes = {
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for Esp32Task */
-osThreadId_t Esp32TaskHandle;
-const osThreadAttr_t Esp32Task_attributes = {
-  .name = "Esp32Task",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
 /* Definitions for CtrlTask */
 osThreadId_t CtrlTaskHandle;
 const osThreadAttr_t CtrlTask_attributes = {
@@ -147,7 +140,6 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 void StartPasswordTask(void *argument);
 void StartNfcTask(void *argument);
-void StartEsp32Task(void *argument);
 void StartCtrlTask(void *argument);
 
 /* USER CODE BEGIN PFP */
@@ -505,9 +497,6 @@ int main(void)
 
   /* creation of NfcTask */
   NfcTaskHandle = osThreadNew(StartNfcTask, NULL, &NfcTask_attributes);
-
-  /* creation of Esp32Task */
-  Esp32TaskHandle = osThreadNew(StartEsp32Task, NULL, &Esp32Task_attributes);
 
   /* creation of CtrlTask */
   CtrlTaskHandle = osThreadNew(StartCtrlTask, NULL, &CtrlTask_attributes);
@@ -919,25 +908,6 @@ void StartNfcTask(void *argument)
     osDelay(200U);
   }
   /* USER CODE END StartNfcTask */
-}
-
-/* USER CODE BEGIN Header_StartEsp32Task */
-/**
-* @brief Function implementing the Esp32Task thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartEsp32Task */
-void StartEsp32Task(void *argument)
-{
-  /* USER CODE BEGIN StartEsp32Task */
-  (void)argument;
-
-  for (;;)
-  {
-    osDelay(1000U);
-  }
-  /* USER CODE END StartEsp32Task */
 }
 
 /* USER CODE BEGIN Header_StartCtrlTask */

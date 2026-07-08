@@ -47,8 +47,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/pn532.c
     Core/Src/access_control.c
     Core/Src/access_config.c
-    Core/Src/smart_lock_protocol.c
-    Core/Src/esp32_link.c
     Core/Src/door_hardware.c
     Core/Src/i2c_bus.c
     Core/Src/ssd1306.c
