@@ -117,3 +117,12 @@ size_t AccessControl_GetCardCount(const AccessControl *control)
 {
   return control == NULL ? 0U : control->card_count;
 }
+
+const AccessControl_Card *AccessControl_GetCard(const AccessControl *control, size_t index)
+{
+  if (control == NULL || index >= control->card_count)
+  {
+    return NULL;
+  }
+  return &control->cards[index];
+}

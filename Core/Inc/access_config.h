@@ -13,6 +13,7 @@ extern "C" {
 
 
 size_t AccessConfig_LoadAuthorizedCards(AccessControl *control);
+const char *AccessConfig_GetPin(void);
 bool AccessConfig_SetPin(const char *pin);
 bool AccessConfig_IsPinAuthorized(const char *pin);
 

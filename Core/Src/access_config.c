@@ -15,6 +15,11 @@ bool AccessConfig_IsPinAuthorized(const char *pin)
   return pin != NULL && strcmp(pin, authorized_pin) == 0;
 }
 
+const char *AccessConfig_GetPin(void)
+{
+  return authorized_pin;
+}
+
 bool AccessConfig_SetPin(const char *pin)
 {
   size_t length = pin == NULL ? 0U : strlen(pin);

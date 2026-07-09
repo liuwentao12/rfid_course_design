@@ -58,6 +58,7 @@ typedef struct {
   bool authorized;
   uint8_t uid[PN532_MAX_UID_LENGTH];
   uint8_t uid_len;
+  char pin[ACCESS_CONFIG_MAX_PIN_LENGTH + 1U];
 } DoorEvent;
 
 /* USER CODE END PTD */
@@ -201,11 +202,11 @@ static bool AuthAlert_IsDue(uint32_t now)
           (uint32_t)(now - last_capture_alert_tick) >= AUTH_ALERT_COOLDOWN_MS);
 }
 
-static void HandleAuthResult(bool authorized)
+static void HandleAuthResult(const DoorEvent *event)
 {
   uint32_t now = HAL_GetTick();
 
-  if (authorized)
+  if (event->authorized)
   {
     consecutive_auth_failures = 0U;
   }
@@ -214,17 +215,37 @@ static void HandleAuthResult(bool authorized)
     consecutive_auth_failures++;
   }
 
-  if (!authorized && AuthAlert_IsDue(now))
+  /* Phase 2: 发送认证事件到上位机 */
+  if (event->type == DOOR_EVENT_PIN_RESULT)
+  {
+    printf("AUTH:PASSWORD:%s:%s\r\n",
+           event->authorized ? "SUCCESS" : "FAILED",
+           event->pin);
+  }
+  else if (event->type == DOOR_EVENT_NFC_RESULT)
+  {
+    char uid_str[PN532_MAX_UID_LENGTH * 2 + 1];
+    for (uint8_t i = 0; i < event->uid_len; i++)
+    {
+      sprintf(uid_str + i * 2, "%02X", event->uid[i]);
+    }
+    uid_str[event->uid_len * 2] = '\0';
+    printf("AUTH:NFC:%s:%s\r\n",
+           event->authorized ? "SUCCESS" : "FAILED",
+           uid_str);
+  }
+
+  if (!event->authorized && AuthAlert_IsDue(now))
   {
     printf("[ALERT] Consecutive failures: %u\r\n", (unsigned int)consecutive_auth_failures);
     DoorHardware_OnAlert();
     last_capture_alert_tick = now;
   }
 
-  ShowAccessResult(authorized);
+  ShowAccessResult(event->authorized);
 }
 
-static osStatus_t DoorEvent_Send(DoorEventType type, bool authorized, const uint8_t *uid, uint8_t uid_len)
+static osStatus_t DoorEvent_Send(DoorEventType type, bool authorized, const uint8_t *uid, uint8_t uid_len, const char *pin)
 {
   DoorEvent event = {0};
 
@@ -235,6 +256,12 @@ static osStatus_t DoorEvent_Send(DoorEventType type, bool authorized, const uint
   if (uid != NULL && event.uid_len > 0U)
   {
     memcpy(event.uid, uid, event.uid_len);
+  }
+
+  if (pin != NULL)
+  {
+    strncpy(event.pin, pin, ACCESS_CONFIG_MAX_PIN_LENGTH);
+    event.pin[ACCESS_CONFIG_MAX_PIN_LENGTH] = '\0';
   }
 
   return osMessageQueuePut(DoorEventQueueHandle, &event, 0U, 0U);
@@ -276,7 +303,7 @@ static void SubmitPinEntry(void)
   {
     case PIN_MODE_UNLOCK:
       pin_entry_mode = PIN_MODE_NONE;
-      (void)DoorEvent_Send(DOOR_EVENT_PIN_RESULT, AccessConfig_IsPinAuthorized(pin), NULL, 0U);
+      (void)DoorEvent_Send(DOOR_EVENT_PIN_RESULT, AccessConfig_IsPinAuthorized(pin), NULL, 0U, pin);
       break;
 
     case PIN_MODE_ADMIN_AUTH:
@@ -807,9 +834,41 @@ void StartPasswordTask(void *argument)
   {
     printf("OLED not found\r\n");
   }
+
+  /* Phase 1: 发送就绪消息 */
+  printf("DOOR_LOCK_READY\r\n");
+
+  /* Phase 3: 发送当前保存的密码和NFC卡信息 */
+  printf("INFO:PASSWORD:%s\r\n", AccessConfig_GetPin());
+  size_t count = AccessControl_GetCardCount(&access_control);
+  for (size_t i = 0; i < count; i++)
+  {
+    const AccessControl_Card *card = AccessControl_GetCard(&access_control, i);
+    if (card != NULL && card->uid_length > 0)
+    {
+      char uid_str[PN532_MAX_UID_LENGTH * 2 + 1];
+      for (uint8_t j = 0; j < card->uid_length; j++)
+      {
+        sprintf(uid_str + j * 2, "%02X", card->uid[j]);
+      }
+      uid_str[card->uid_length * 2] = '\0';
+      printf("INFO:NFC:%s\r\n", uid_str);
+    }
+  }
+
+  uint32_t last_heartbeat = HAL_GetTick();
   for (;;)
   {
     HandleKeypadKey(Keypad_GetKey(&keypad));
+
+    /* Phase 1: 每 5 秒发送一次心跳 */
+    uint32_t now = HAL_GetTick();
+    if ((uint32_t)(now - last_heartbeat) >= 5000U)
+    {
+      last_heartbeat = now;
+      printf("HEARTBEAT\r\n");
+    }
+
     osDelay(10U);
   }
   /* USER CODE END 5 */
@@ -901,7 +960,7 @@ void StartNfcTask(void *argument)
         bool authorized = AccessControl_IsAuthorized(&access_control, uid, uid_len);
 
         printf("[NFC] Card detected, authorized=%u\r\n", authorized ? 1U : 0U);
-        (void)DoorEvent_Send(DOOR_EVENT_NFC_RESULT, authorized, uid, uid_len);
+        (void)DoorEvent_Send(DOOR_EVENT_NFC_RESULT, authorized, uid, uid_len, NULL);
       }
     }
 
@@ -929,7 +988,7 @@ void StartCtrlTask(void *argument)
     if (osMessageQueueGet(DoorEventQueueHandle, &event, NULL, osWaitForever) == osOK &&
         (event.type == DOOR_EVENT_PIN_RESULT || event.type == DOOR_EVENT_NFC_RESULT))
     {
-      HandleAuthResult(event.authorized);
+      HandleAuthResult(&event);
     }
   }
   /* USER CODE END StartCtrlTask */

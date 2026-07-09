@@ -38,6 +38,7 @@ AccessControl_Status AccessControl_RemoveCard(AccessControl *control, const uint
 AccessControl_Status AccessControl_SetCardEnabled(AccessControl *control, const uint8_t *uid, uint8_t uid_length, bool enabled);
 bool AccessControl_IsAuthorized(const AccessControl *control, const uint8_t *uid, uint8_t uid_length);
 size_t AccessControl_GetCardCount(const AccessControl *control);
+const AccessControl_Card *AccessControl_GetCard(const AccessControl *control, size_t index);
 
 #ifdef __cplusplus
 }
