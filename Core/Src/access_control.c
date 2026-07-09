@@ -7,6 +7,11 @@ static bool AccessControl_IsUidLengthValid(uint8_t length)
   return length == 4U || length == 7U || length == 10U;
 }
 
+static bool AccessControl_IsRoleValid(AccessControl_Role role)
+{
+  return role == ACCESS_CONTROL_ROLE_USER || role == ACCESS_CONTROL_ROLE_ADMIN;
+}
+
 static size_t AccessControl_FindCard(const AccessControl *control, const uint8_t *uid, uint8_t uid_length)
 {
   if (control == NULL || uid == NULL || !AccessControl_IsUidLengthValid(uid_length))
@@ -36,6 +41,11 @@ void AccessControl_Init(AccessControl *control)
 
 AccessControl_Status AccessControl_AddCard(AccessControl *control, const uint8_t *uid, uint8_t uid_length)
 {
+  return AccessControl_AddCardWithRole(control, uid, uid_length, ACCESS_CONTROL_ROLE_USER);
+}
+
+AccessControl_Status AccessControl_AddCardWithRole(AccessControl *control, const uint8_t *uid, uint8_t uid_length, AccessControl_Role role)
+{
   if (control == NULL || uid == NULL)
   {
     return ACCESS_CONTROL_INVALID_ARGUMENT;
@@ -43,6 +53,10 @@ AccessControl_Status AccessControl_AddCard(AccessControl *control, const uint8_t
   if (!AccessControl_IsUidLengthValid(uid_length))
   {
     return ACCESS_CONTROL_INVALID_UID_LENGTH;
+  }
+  if (!AccessControl_IsRoleValid(role))
+  {
+    return ACCESS_CONTROL_INVALID_ARGUMENT;
   }
   if (AccessControl_FindCard(control, uid, uid_length) != ACCESS_CONTROL_MAX_CARDS)
   {
@@ -56,6 +70,7 @@ AccessControl_Status AccessControl_AddCard(AccessControl *control, const uint8_t
   AccessControl_Card *card = &control->cards[control->card_count++];
   memcpy(card->uid, uid, uid_length);
   card->uid_length = uid_length;
+  card->role = role;
   card->enabled = true;
   return ACCESS_CONTROL_OK;
 }
@@ -109,8 +124,18 @@ AccessControl_Status AccessControl_SetCardEnabled(AccessControl *control, const 
 
 bool AccessControl_IsAuthorized(const AccessControl *control, const uint8_t *uid, uint8_t uid_length)
 {
+  AccessControl_Role role = AccessControl_GetRole(control, uid, uid_length);
+  return role == ACCESS_CONTROL_ROLE_USER || role == ACCESS_CONTROL_ROLE_ADMIN;
+}
+
+AccessControl_Role AccessControl_GetRole(const AccessControl *control, const uint8_t *uid, uint8_t uid_length)
+{
   size_t index = AccessControl_FindCard(control, uid, uid_length);
-  return index != ACCESS_CONTROL_MAX_CARDS && control->cards[index].enabled;
+  if (index == ACCESS_CONTROL_MAX_CARDS || !control->cards[index].enabled)
+  {
+    return ACCESS_CONTROL_ROLE_NONE;
+  }
+  return control->cards[index].role;
 }
 
 size_t AccessControl_GetCardCount(const AccessControl *control)

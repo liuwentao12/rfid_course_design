@@ -21,9 +21,16 @@ typedef enum {
   ACCESS_CONTROL_NOT_FOUND
 } AccessControl_Status;
 
+typedef enum {
+  ACCESS_CONTROL_ROLE_NONE = 0,
+  ACCESS_CONTROL_ROLE_USER,
+  ACCESS_CONTROL_ROLE_ADMIN
+} AccessControl_Role;
+
 typedef struct {
   uint8_t uid[ACCESS_CONTROL_MAX_UID_LENGTH];
   uint8_t uid_length;
+  AccessControl_Role role;
   bool enabled;
 } AccessControl_Card;
 
@@ -34,9 +41,11 @@ typedef struct {
 
 void AccessControl_Init(AccessControl *control);
 AccessControl_Status AccessControl_AddCard(AccessControl *control, const uint8_t *uid, uint8_t uid_length);
+AccessControl_Status AccessControl_AddCardWithRole(AccessControl *control, const uint8_t *uid, uint8_t uid_length, AccessControl_Role role);
 AccessControl_Status AccessControl_RemoveCard(AccessControl *control, const uint8_t *uid, uint8_t uid_length);
 AccessControl_Status AccessControl_SetCardEnabled(AccessControl *control, const uint8_t *uid, uint8_t uid_length, bool enabled);
 bool AccessControl_IsAuthorized(const AccessControl *control, const uint8_t *uid, uint8_t uid_length);
+AccessControl_Role AccessControl_GetRole(const AccessControl *control, const uint8_t *uid, uint8_t uid_length);
 size_t AccessControl_GetCardCount(const AccessControl *control);
 const AccessControl_Card *AccessControl_GetCard(const AccessControl *control, size_t index);
 
